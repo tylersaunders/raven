@@ -1,0 +1,16 @@
+[package]
+name = "raven-database"
+edition = "2024"
+description = "raven - remembering your shell history."
+
+[dependencies]
+
+raven-common = {path = "../raven-common"}
+
+# Use bundled to compile and link an up-to-date version of
+# sqlite into the library. Avoids issues with the version
+# of sqlite on the system which may be old or missing.
+rusqlite = { version = "0.33.0", features = ["bundled"] }
+time = { workspace = true}
+typed-builder = { workspace = true }
+log = { workspace = true }

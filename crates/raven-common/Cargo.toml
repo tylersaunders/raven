@@ -1,0 +1,4 @@
+[package]
+name = "raven-common"
+edition = "2024"
+description = "raven - common code library."

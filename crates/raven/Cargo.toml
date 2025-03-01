@@ -1,0 +1,12 @@
+[package]
+name = "raven"
+edition = "2024"
+description = "raven - remembering your shell history."
+
+[dependencies]
+raven-common = { path = "../raven-common" }
+raven-database = { path = "../raven-database" }
+clap = { workspace = true }
+time = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
