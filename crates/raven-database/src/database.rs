@@ -15,7 +15,6 @@ impl fmt::Display for DatabaseError {
 }
 
 pub trait Database {
-
     /// Save a `History` object to the database.
     /// * `history`:
     ///
@@ -35,7 +34,7 @@ pub trait Database {
     ///
     /// # Errors
     /// Will return `Err` if the database Encountered an issue.
-    fn get(&self, id:i64) -> Result<Option<History>, DatabaseError>;
+    fn get(&self, id: i64) -> Result<Option<History>, DatabaseError>;
 
     /// Writes all `History` object fields back to the database.
     /// NOTE: This overrides existing data.
@@ -45,5 +44,12 @@ pub trait Database {
     /// # Errors
     /// Will return `Err` if the database Encountered an issue.
     fn update(&self, history: &History) -> Result<(), DatabaseError>;
-}
 
+    /// Search over history records and return a list of matching results.
+    ///
+    /// * `limit`: The maximum amount of results to return.
+    ///
+    /// # Errors
+    /// Will return `Err` if the database Encountered an issue.
+    fn search(&self, query: &str, limit: Option<usize>) -> Result<Vec<History>, DatabaseError>;
+}

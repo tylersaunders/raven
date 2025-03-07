@@ -10,3 +10,5 @@ clap = { workspace = true }
 time = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }

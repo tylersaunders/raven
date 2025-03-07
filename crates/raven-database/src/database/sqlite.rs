@@ -2,7 +2,7 @@ use std::fs;
 
 use log::{debug, error};
 use raven_common::utils::get_data_dir;
-use rusqlite::{Connection, OpenFlags, params};
+use rusqlite::{named_params, params, Connection, OpenFlags};
 use time::OffsetDateTime;
 
 use crate::history::model::History;
@@ -128,6 +128,49 @@ impl Database for Sqlite {
                         msg: String::from("Unexpected row count for single row update."),
                     })
                 }
+            }
+            Err(error) => Err(DatabaseError {
+                msg: format!("{error}"),
+            }),
+        }
+    }
+
+    fn search(&self, query: &str, limit: Option<usize>) -> Result<Vec<History>, DatabaseError> {
+        debug!("search with query: {query}");
+        let query_limit = limit.unwrap_or(20);
+
+        let (sql, params) = if query.is_empty() {
+            (
+                "SELECT id, command, cwd, exit_code, timestamp from history ORDER BY timestamp DESC LIMIT :limit",
+                named_params! { ":limit": query_limit }
+            )
+        } else {
+            (
+                "SELECT id, command, cwd, exit_code, timestamp from history WHERE command LIKE :query ORDER BY timestamp DESC LIMIT :limit",
+                named_params! {
+                    ":limit": query_limit,
+                    ":query": format!("{query}%")
+                }
+            )
+        };
+
+        let mut stmt = self.conn.prepare(sql).unwrap();
+
+        match stmt.query_map(params, |row| {
+            Ok(History::builder()
+                .id(row.get(0)?)
+                .command(row.get(1)?)
+                .cwd(row.get(2)?)
+                .exit_code(row.get(3)?)
+                .timestamp(OffsetDateTime::from_unix_timestamp(row.get(4)?).unwrap())
+                .build())
+        }) {
+            Ok(rows) => {
+                let mut results: Vec<History> = Vec::new();
+                for row in rows {
+                    results.push(row.unwrap());
+                }
+                Ok(results)
             }
             Err(error) => Err(DatabaseError {
                 msg: format!("{error}"),

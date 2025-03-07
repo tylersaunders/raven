@@ -1,6 +1,7 @@
 use clap::Subcommand;
 mod history;
 mod init;
+mod search;
 
 #[derive(Subcommand, Debug)]
 #[command(infer_subcommands = true)]
@@ -11,6 +12,8 @@ pub enum Cmd {
 
     #[command(subcommand)]
     History(history::Cmd),
+
+    Search(search::Cmd),
 }
 
 impl Cmd {
@@ -22,6 +25,9 @@ impl Cmd {
             }
             Self::History(history) => {
                 history.run();
+            }
+            Self::Search(search) => {
+                search.run();
             }
         }
     }
