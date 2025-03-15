@@ -34,7 +34,7 @@ impl Cmd {
     ///
     /// * `command`: The shell command that is about to be run by the shell.
     fn handle_start(command: &[String]) {
-        let context = current_context();
+        let mut context = current_context();
         let captured = History::capture()
             .cwd(utils::get_current_dir())
             .command(command.join(" "))

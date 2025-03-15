@@ -219,7 +219,7 @@ impl SearchApp {
             Span::default().content(" "),
             // The time since the command was run, color coded by exit_code
             Span::styled(
-                format!("{:>3}", SearchApp::time_since(&now, h)),
+                format!("{:>4}", SearchApp::time_since(&now, h)),
                 match h.exit_code {
                     0 => Style::new().blue(),
                     _ => Style::new().red(),

@@ -3,6 +3,7 @@ use raven_common::utils;
 
 pub mod database;
 pub mod history;
+pub mod import;
 
 /// Context object
 ///

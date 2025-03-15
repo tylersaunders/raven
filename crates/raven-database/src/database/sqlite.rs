@@ -2,7 +2,7 @@ use std::fs;
 
 use log::{debug, error};
 use raven_common::utils::get_data_dir;
-use rusqlite::{named_params, params, Connection, OpenFlags};
+use rusqlite::{Connection, DropBehavior, OpenFlags, named_params, params};
 use time::OffsetDateTime;
 
 use crate::history::model::History;
@@ -17,6 +17,13 @@ pub struct Sqlite {
 }
 
 impl Sqlite {
+    /// Insert statement for a single row into history table
+    const SQL_INSERT_INTO_HISTORY: &str =
+        "INSERT INTO history(timestamp, command, cwd, exit_code) VALUES (?1, ?2, ?3, ?4)";
+
+    const SQL_UPDATE_HISTORY_ROW: &str =
+        "UPDATE history SET command=?1, cwd=?2, exit_code=?3, timestamp=?4 WHERE id=?5";
+
     /// Creates a new [`Sqlite`].
     ///
     /// # Panics
@@ -41,10 +48,8 @@ impl Default for Sqlite {
 }
 
 impl Database for Sqlite {
-    fn save(&self, history: &History) -> Result<i64, DatabaseError> {
-        let stmt = self.conn.prepare(
-            "INSERT INTO history(timestamp, command, cwd, exit_code) VALUES (?1, ?2, ?3, ?4)",
-        );
+    fn save(&mut self, history: &History) -> Result<i64, DatabaseError> {
+        let stmt = self.conn.prepare(Sqlite::SQL_INSERT_INTO_HISTORY);
         return match stmt.unwrap().insert(params![
             history.timestamp.unix_timestamp(),
             history.command,
@@ -58,20 +63,30 @@ impl Database for Sqlite {
         };
     }
 
-    fn save_bulk(&self, history: &[History]) -> Result<Vec<i64>, DatabaseError> {
+    fn save_bulk(&mut self, history: &[History]) -> Result<Vec<i64>, DatabaseError> {
         let mut row_ids: Vec<i64> = Vec::new();
 
+        let mut tx = self.conn.transaction().expect("expected transaction");
+        tx.set_drop_behavior(DropBehavior::Rollback);
+
+        let mut stmt = tx.prepare(Sqlite::SQL_INSERT_INTO_HISTORY).unwrap();
         for h in history {
-            match self.save(h) {
-                Ok(id) => row_ids.push(id),
+            match stmt.insert(params![
+                h.timestamp.unix_timestamp(),
+                h.command,
+                h.cwd,
+                h.exit_code,
+            ]) {
+                Ok(row_id) => row_ids.push(row_id),
                 Err(err) => {
                     return Err(DatabaseError {
                         msg: format!("{err}"),
                     });
                 }
-            }
+            };
         }
-
+        drop(stmt);
+        let _ = tx.commit();
         Ok(row_ids)
     }
 
@@ -106,12 +121,7 @@ impl Database for Sqlite {
             });
         }
 
-        let mut stmt = self
-            .conn
-            .prepare(
-                "UPDATE history SET command=?1, cwd=?2, exit_code=?3, timestamp=?4 WHERE id=?5",
-            )
-            .unwrap();
+        let mut stmt = self.conn.prepare(Sqlite::SQL_UPDATE_HISTORY_ROW).unwrap();
 
         match stmt.execute(params![
             history.command,
@@ -141,16 +151,29 @@ impl Database for Sqlite {
 
         let (sql, params) = if query.is_empty() {
             (
-                "SELECT id, command, cwd, exit_code, timestamp from history ORDER BY timestamp DESC LIMIT :limit",
-                named_params! { ":limit": query_limit }
+                concat!(
+                    "SELECT ",
+                    "id, command, cwd, exit_code, timestamp ",
+                    "FROM history ",
+                    "ORDER BY timestamp DESC ",
+                    "LIMIT :limit",
+                ),
+                named_params! { ":limit": query_limit },
             )
         } else {
             (
-                "SELECT id, command, cwd, exit_code, timestamp from history WHERE command LIKE :query ORDER BY timestamp DESC LIMIT :limit",
+                concat!(
+                    "SELECT ",
+                    "id, command, cwd, exit_code, timestamp ",
+                    "FROM history ",
+                    "WHERE command LIKE :query ",
+                    "ORDER BY timestamp DESC ",
+                    "LIMIT :limit",
+                ),
                 named_params! {
                     ":limit": query_limit,
-                    ":query": format!("{query}%")
-                }
+                    ":query": format!("%{query}%")
+                },
             )
         };
 

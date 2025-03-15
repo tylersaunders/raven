@@ -36,6 +36,10 @@ impl History {
     pub fn capture() -> HistoryCapturedBuilder {
         HistoryCaptured::builder()
     }
+
+    pub fn import() -> HistoryImportedBuilder {
+        HistoryImported::builder()
+    }
 }
 
 #[derive(Debug, Clone, TypedBuilder)]
@@ -57,5 +61,28 @@ pub struct HistoryCaptured {
 impl From<HistoryCaptured> for History {
     fn from(captured: HistoryCaptured) -> Self {
         History::new(captured.timestamp, captured.command, captured.cwd, -1)
+    }
+}
+
+#[derive(Debug, Clone, TypedBuilder)]
+/// The data required to import a history object from an import source (such as a histfile)
+///
+/// * `timestamp`: unix timestamp (since epoc, utc) when the command was run
+/// * `command`: plain-text command that was run
+pub struct HistoryImported {
+    timestamp: OffsetDateTime,
+
+    #[builder(setter(into))]
+    command: String,
+}
+
+impl From<HistoryImported> for History {
+    fn from(imported: HistoryImported) -> Self {
+        History::new(
+            imported.timestamp,
+            imported.command,
+            String::from("unknown"),
+            -1,
+        )
     }
 }

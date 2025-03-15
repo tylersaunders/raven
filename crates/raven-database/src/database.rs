@@ -20,14 +20,14 @@ pub trait Database {
     ///
     /// # Errors
     /// Will return `Err` if the database Encountered an issue.
-    fn save(&self, history: &History) -> Result<i64, DatabaseError>;
+    fn save(&mut self, history: &History) -> Result<i64, DatabaseError>;
 
     /// Save a vec of `History` objects to the database.
     /// * `history`:
     ///
     /// # Errors
     /// Will return `Err` if the database Encountered an issue.
-    fn save_bulk(&self, history: &[History]) -> Result<Vec<i64>, DatabaseError>;
+    fn save_bulk(&mut self, history: &[History]) -> Result<Vec<i64>, DatabaseError>;
 
     /// Fetch a `History` object by its id from the database.
     /// * `history`:
