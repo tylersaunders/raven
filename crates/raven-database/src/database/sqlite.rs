@@ -24,6 +24,8 @@ impl Sqlite {
     const SQL_UPDATE_HISTORY_ROW: &str =
         "UPDATE history SET command=?1, cwd=?2, exit_code=?3, timestamp=?4 WHERE id=?5";
 
+    const SQL_COUNT_HISTORY_ROWS: &str = "SELECT count(*) FROM history";
+
     /// Creates a new [`Sqlite`].
     ///
     /// # Panics
@@ -47,20 +49,25 @@ impl Default for Sqlite {
     }
 }
 
+// From rusqlite errors to Raven's internal DatabaseError type.
+impl From<rusqlite::Error> for DatabaseError {
+    fn from(value: rusqlite::Error) -> Self {
+        Self {
+            msg: format!("{value}"),
+        }
+    }
+}
+
 impl Database for Sqlite {
     fn save(&mut self, history: &History) -> Result<i64, DatabaseError> {
         let stmt = self.conn.prepare(Sqlite::SQL_INSERT_INTO_HISTORY);
-        return match stmt.unwrap().insert(params![
+        let result = stmt?.insert(params![
             history.timestamp.unix_timestamp(),
             history.command,
             history.cwd,
             history.exit_code,
-        ]) {
-            Ok(row_id) => Ok(row_id),
-            Err(err) => Err(DatabaseError {
-                msg: format!("{err}"),
-            }),
-        };
+        ]);
+        Ok(result?)
     }
 
     fn save_bulk(&mut self, history: &[History]) -> Result<Vec<i64>, DatabaseError> {
@@ -79,9 +86,7 @@ impl Database for Sqlite {
             ]) {
                 Ok(row_id) => row_ids.push(row_id),
                 Err(err) => {
-                    return Err(DatabaseError {
-                        msg: format!("{err}"),
-                    });
+                    return Err(err.into());
                 }
             };
         }
@@ -93,8 +98,7 @@ impl Database for Sqlite {
     fn get(&self, id: i64) -> Result<Option<History>, DatabaseError> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, command, cwd, exit_code, timestamp FROM history WHERE id=?1")
-            .unwrap();
+            .prepare("SELECT id, command, cwd, exit_code, timestamp FROM history WHERE id=?1")?;
 
         let h = stmt.query_row([id], |row| {
             Ok(History::builder()
@@ -102,15 +106,16 @@ impl Database for Sqlite {
                 .command(row.get(1)?)
                 .cwd(row.get(2)?)
                 .exit_code(row.get(3)?)
-                .timestamp(OffsetDateTime::from_unix_timestamp(row.get(4)?).unwrap())
+                .timestamp(
+                    OffsetDateTime::from_unix_timestamp(row.get(4)?)
+                        .expect("Failed to parse timestamp"),
+                )
                 .build())
         });
 
         match h {
             Ok(h) => Ok(Some(h)),
-            Err(err) => Err(DatabaseError {
-                msg: format!("{err}"),
-            }),
+            Err(e) => Err(e.into()),
         }
     }
 
@@ -121,7 +126,7 @@ impl Database for Sqlite {
             });
         }
 
-        let mut stmt = self.conn.prepare(Sqlite::SQL_UPDATE_HISTORY_ROW).unwrap();
+        let mut stmt = self.conn.prepare(Sqlite::SQL_UPDATE_HISTORY_ROW)?;
 
         match stmt.execute(params![
             history.command,
@@ -139,9 +144,7 @@ impl Database for Sqlite {
                     })
                 }
             }
-            Err(error) => Err(DatabaseError {
-                msg: format!("{error}"),
-            }),
+            Err(e) => Err(e.into()),
         }
     }
 
@@ -177,7 +180,7 @@ impl Database for Sqlite {
             )
         };
 
-        let mut stmt = self.conn.prepare(sql).unwrap();
+        let mut stmt = self.conn.prepare(sql)?;
 
         match stmt.query_map(params, |row| {
             Ok(History::builder()
@@ -195,10 +198,14 @@ impl Database for Sqlite {
                 }
                 Ok(results)
             }
-            Err(error) => Err(DatabaseError {
-                msg: format!("{error}"),
-            }),
+            Err(e) => Err(e.into()),
         }
+    }
+
+    fn get_history_total(&self) -> Result<i64, DatabaseError> {
+        let mut stmt = self.conn.prepare(Sqlite::SQL_COUNT_HISTORY_ROWS)?;
+        let rows = stmt.query_row([], |row| row.get::<usize, i64>(0));
+        Ok(rows?)
     }
 }
 

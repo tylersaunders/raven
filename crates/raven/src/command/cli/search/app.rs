@@ -46,6 +46,10 @@ impl SearchApp {
         self.commands = results;
     }
 
+    pub fn get_history_count(&self) -> i64 {
+        self.context.db.get_history_total().unwrap_or(-1)
+    }
+
     pub fn new(query: String) -> Self {
         let pos = query.chars().count();
         Self {
@@ -144,7 +148,7 @@ impl StatefulWidgetRef for &mut SearchApp {
             .horizontal_margin(4)
             .areas(area);
 
-        SearchApp::render_title(top, buf);
+        SearchApp::render_title(top, buf, self.get_history_count());
         SearchApp::render_history_list(
             middle,
             buf,
@@ -162,7 +166,7 @@ impl StatefulWidgetRef for &mut SearchApp {
 
 impl SearchApp {
     /// Render the interactive screen header.
-    fn render_title(area: Rect, buf: &mut Buffer) {
+    fn render_title(area: Rect, buf: &mut Buffer, history_count: i64) {
         let [left, right] = Layout::horizontal([Constraint::Fill(1); 2]).areas(area);
 
         Paragraph::new(format!(
@@ -172,7 +176,7 @@ impl SearchApp {
         ))
         .render_ref(left, buf);
         // TODO: get a count query into the UI.
-        Paragraph::new("history count: 1234567890")
+        Paragraph::new(format!("history count: {history_count}"))
             .alignment(Alignment::Right)
             .render_ref(right, buf);
     }

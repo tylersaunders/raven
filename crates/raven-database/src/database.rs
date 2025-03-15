@@ -36,6 +36,13 @@ pub trait Database {
     /// Will return `Err` if the database Encountered an issue.
     fn get(&self, id: i64) -> Result<Option<History>, DatabaseError>;
 
+    /// Gets the total number of rows in the history table.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the database encountered an issue.
+    fn get_history_total(&self) -> Result<i64, DatabaseError>;
+
     /// Writes all `History` object fields back to the database.
     /// NOTE: This overrides existing data.
     ///
