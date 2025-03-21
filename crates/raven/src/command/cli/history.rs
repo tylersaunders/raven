@@ -43,7 +43,7 @@ impl Cmd {
         match context.db.save(&captured.into()) {
             // Print the ID to stdout, it will be used for history end {id}
             Ok(id) => println!("{id}"),
-            Err(_err) => (),
+            Err(err) => panic!("{err}"),
         };
     }
 

@@ -40,8 +40,9 @@ pub struct AppState {
 impl SearchApp {
     /// Fetch a `History` list from the raven database which matches the current input query.
     pub fn get_history(&mut self) {
-        let Ok(results) = self.context.db.search(&self.input, Some(500)) else {
-            panic!("error")
+        let results = match self.context.db.search(&self.input, Some(500)) {
+            Ok(h) => h,
+            Err(err) => panic! {"{err}"},
         };
         self.commands = results;
     }

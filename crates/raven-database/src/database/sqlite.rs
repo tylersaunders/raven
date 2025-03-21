@@ -1,8 +1,10 @@
 use std::fs;
 
+mod query;
 use log::{debug, error};
+use query::{Query, SqlString};
 use raven_common::utils::get_data_dir;
-use rusqlite::{Connection, DropBehavior, OpenFlags, named_params, params};
+use rusqlite::{Connection, DropBehavior, OpenFlags, ToSql, named_params};
 use time::OffsetDateTime;
 
 use crate::history::model::History;
@@ -17,15 +19,6 @@ pub struct Sqlite {
 }
 
 impl Sqlite {
-    /// Insert statement for a single row into history table
-    const SQL_INSERT_INTO_HISTORY: &str =
-        "INSERT INTO history(timestamp, command, cwd, exit_code) VALUES (?1, ?2, ?3, ?4)";
-
-    const SQL_UPDATE_HISTORY_ROW: &str =
-        "UPDATE history SET command=?1, cwd=?2, exit_code=?3, timestamp=?4 WHERE id=?5";
-
-    const SQL_COUNT_HISTORY_ROWS: &str = "SELECT count(*) FROM history";
-
     /// Creates a new [`Sqlite`].
     ///
     /// # Panics
@@ -60,13 +53,21 @@ impl From<rusqlite::Error> for DatabaseError {
 
 impl Database for Sqlite {
     fn save(&mut self, history: &History) -> Result<i64, DatabaseError> {
-        let stmt = self.conn.prepare(Sqlite::SQL_INSERT_INTO_HISTORY);
-        let result = stmt?.insert(params![
-            history.timestamp.unix_timestamp(),
-            history.command,
-            history.cwd,
-            history.exit_code,
-        ]);
+        let query = Query::insert()
+            .column("timestamp")
+            .column("command")
+            .column("cwd")
+            .column("exit_code")
+            .table("history")
+            .to_owned();
+
+        let stmt = self.conn.prepare(query.to_sql().as_str());
+        let result = stmt?.insert(named_params! {
+            ":timestamp": history.timestamp.unix_timestamp(),
+            ":command": history.command,
+            ":cwd": history.cwd,
+            ":exit_code": history.exit_code,
+        });
         Ok(result?)
     }
 
@@ -76,14 +77,21 @@ impl Database for Sqlite {
         let mut tx = self.conn.transaction().expect("expected transaction");
         tx.set_drop_behavior(DropBehavior::Rollback);
 
-        let mut stmt = tx.prepare(Sqlite::SQL_INSERT_INTO_HISTORY).unwrap();
+        let query = Query::insert()
+            .column("timestamp")
+            .column("command")
+            .column("cwd")
+            .column("exit_code")
+            .table("history")
+            .to_owned();
+        let mut stmt = tx.prepare(query.to_sql().as_str()).unwrap();
         for h in history {
-            match stmt.insert(params![
-                h.timestamp.unix_timestamp(),
-                h.command,
-                h.cwd,
-                h.exit_code,
-            ]) {
+            match stmt.insert(named_params! {
+                ":timestamp": h.timestamp.unix_timestamp(),
+                ":command": h.command,
+                ":cwd": h.cwd,
+                ":exit_code": h.exit_code,
+            }) {
                 Ok(row_id) => row_ids.push(row_id),
                 Err(err) => {
                     return Err(err.into());
@@ -96,18 +104,29 @@ impl Database for Sqlite {
     }
 
     fn get(&self, id: i64) -> Result<Option<History>, DatabaseError> {
+        let query = Query::select()
+            .column("id")
+            .column("command")
+            .column("cwd")
+            .column("exit_code")
+            .column("timestamp")
+            .from("history")
+            .r#where("id")
+            .to_owned();
+
         let mut stmt = self
             .conn
-            .prepare("SELECT id, command, cwd, exit_code, timestamp FROM history WHERE id=?1")?;
+            // .prepare("SELECT id, command, cwd, exit_code, timestamp FROM history WHERE id=?1")?;
+            .prepare(query.to_sql().as_str())?;
 
         let h = stmt.query_row([id], |row| {
             Ok(History::builder()
-                .id(row.get(0)?)
-                .command(row.get(1)?)
-                .cwd(row.get(2)?)
-                .exit_code(row.get(3)?)
+                .id(row.get("id")?)
+                .command(row.get("command")?)
+                .cwd(row.get("cwd")?)
+                .exit_code(row.get("exit_code")?)
                 .timestamp(
-                    OffsetDateTime::from_unix_timestamp(row.get(4)?)
+                    OffsetDateTime::from_unix_timestamp(row.get("timestamp")?)
                         .expect("Failed to parse timestamp"),
                 )
                 .build())
@@ -126,15 +145,24 @@ impl Database for Sqlite {
             });
         }
 
-        let mut stmt = self.conn.prepare(Sqlite::SQL_UPDATE_HISTORY_ROW)?;
+        let query = Query::update()
+            .table("history")
+            .column("command")
+            .column("cwd")
+            .column("exit_code")
+            .column("timestamp")
+            .r#where("id")
+            .to_owned();
 
-        match stmt.execute(params![
-            history.command,
-            history.cwd,
-            history.exit_code,
-            history.timestamp.unix_timestamp(),
-            history.id,
-        ]) {
+        let mut stmt = self.conn.prepare(query.to_sql().as_str())?;
+
+        match stmt.execute(named_params! {
+            ":command": history.command,
+            ":cwd": history.cwd,
+            ":exit_code": history.exit_code,
+            ":timestamp": history.timestamp.unix_timestamp(),
+            ":w_id": history.id,
+        }) {
             Ok(rows) => {
                 if rows == 1 {
                     Ok(())
@@ -150,45 +178,39 @@ impl Database for Sqlite {
 
     fn search(&self, query: &str, limit: Option<usize>) -> Result<Vec<History>, DatabaseError> {
         debug!("search with query: {query}");
-        let query_limit = limit.unwrap_or(20);
 
-        let (sql, params) = if query.is_empty() {
-            (
-                concat!(
-                    "SELECT ",
-                    "id, command, cwd, exit_code, timestamp ",
-                    "FROM history ",
-                    "ORDER BY timestamp DESC ",
-                    "LIMIT :limit",
-                ),
-                named_params! { ":limit": query_limit },
-            )
+        let mut sql_query = Query::select()
+            .column("id")
+            .column("command")
+            .column("cwd")
+            .column("exit_code")
+            .column("timestamp")
+            .from("history")
+            .orderby("timestamp", "DESC")
+            .to_owned();
+
+        if let Some(limit) = limit {
+            sql_query.limit(limit);
+        }
+
+        let params: &[(&str, &dyn ToSql)] = if query.is_empty() {
+            &[]
         } else {
-            (
-                concat!(
-                    "SELECT ",
-                    "id, command, cwd, exit_code, timestamp ",
-                    "FROM history ",
-                    "WHERE command LIKE :query ",
-                    "ORDER BY timestamp DESC ",
-                    "LIMIT :limit",
-                ),
-                named_params! {
-                    ":limit": query_limit,
-                    ":query": format!("%{query}%")
-                },
-            )
+            sql_query.like("command");
+            named_params! {
+                ":command": format!("%{query}%")
+            }
         };
 
-        let mut stmt = self.conn.prepare(sql)?;
+        let mut stmt = self.conn.prepare(sql_query.to_sql().as_str())?;
 
         match stmt.query_map(params, |row| {
             Ok(History::builder()
-                .id(row.get(0)?)
-                .command(row.get(1)?)
-                .cwd(row.get(2)?)
-                .exit_code(row.get(3)?)
-                .timestamp(OffsetDateTime::from_unix_timestamp(row.get(4)?).unwrap())
+                .id(row.get("id")?)
+                .command(row.get("command")?)
+                .cwd(row.get("cwd")?)
+                .exit_code(row.get("exit_code")?)
+                .timestamp(OffsetDateTime::from_unix_timestamp(row.get("timestamp")?).unwrap())
                 .build())
         }) {
             Ok(rows) => {
@@ -203,8 +225,12 @@ impl Database for Sqlite {
     }
 
     fn get_history_total(&self) -> Result<i64, DatabaseError> {
-        let mut stmt = self.conn.prepare(Sqlite::SQL_COUNT_HISTORY_ROWS)?;
-        let rows = stmt.query_row([], |row| row.get::<usize, i64>(0));
+        let query = Query::select()
+            .count("*", "count")
+            .from("history")
+            .to_owned();
+        let mut stmt = self.conn.prepare(query.to_sql().as_str())?;
+        let rows = stmt.query_row([], |row| row.get::<&str, i64>("count"));
         Ok(rows?)
     }
 }
