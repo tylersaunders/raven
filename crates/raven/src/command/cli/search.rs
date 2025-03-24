@@ -2,7 +2,7 @@ use std::io::Write;
 
 use clap::Parser;
 use log::{debug, error};
-use raven_database::{current_context, database::DatabaseError, history::model::History};
+use raven_database::{HistoryFilters, current_context, database::DatabaseError, history::model::History};
 
 mod app;
 mod duration;
@@ -15,6 +15,14 @@ pub struct Cmd {
     /// Filter search result by directory
     #[arg(long, short)]
     cwd: Option<String>,
+
+    // Filter search by exit code
+    #[arg(long, short)]
+    exit: Option<i64>,
+
+    // Limit the number of results
+    #[arg(long, short)]
+    limit: Option<usize>,
 
     query: Option<Vec<String>>,
 
@@ -51,7 +59,12 @@ impl Cmd {
             };
             write_command_out(&h.command);
         } else {
-            let Ok(entries) = run_non_interactive(&query) else {
+            let filters = HistoryFilters {
+                exit: self.exit,
+                cwd: self.cwd,
+                limit: self.limit,
+            };
+            let Ok(entries) = run_non_interactive(&query, filters) else {
                 // All we can do is exit with failed at this point.
                 std::process::exit(1)
             };
@@ -69,16 +82,16 @@ impl Cmd {
 }
 
 /// Run a `query` against the raven database and return the first result.
-fn run_non_interactive(query: &[String]) -> Result<Vec<History>, DatabaseError> {
+fn run_non_interactive(query: &[String], filters: HistoryFilters) -> Result<Vec<History>, DatabaseError> {
     let context = current_context();
-    context.db.search(query.join(" ").as_str(), Some(1))
+    context.db.search(query.join(" ").as_str(), filters)
 }
 
 /// Write the `command` out to stdout
 fn write_command_out(command: &String) {
     let w = std::io::stdout();
     let mut w = w.lock();
-    let write = write!(w, "{command}");
+    let write = writeln!(w, "{command}");
     if let Err(err) = write {
         error!("write error {}", err);
         std::process::exit(1);

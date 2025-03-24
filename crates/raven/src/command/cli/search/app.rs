@@ -13,6 +13,7 @@ use ratatui::{
         WidgetRef,
     },
 };
+use raven_database::HistoryFilters;
 use raven_database::{Context, current_context, history::model::History};
 use time::OffsetDateTime;
 
@@ -20,6 +21,13 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Application result type.
 pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
+
+/// The history scope of the current interactive session.
+#[derive(Clone)]
+pub enum Scope {
+    Cwd,
+    All,
+}
 
 pub struct SearchApp {
     pub running: bool,
@@ -35,12 +43,24 @@ pub struct SearchApp {
 pub struct AppState {
     pub cusor_position: Position,
     pub list_state: ListState,
+    pub scope: Scope,
+    pub cwd: String,
 }
 
 impl SearchApp {
     /// Fetch a `History` list from the raven database which matches the current input query.
-    pub fn get_history(&mut self) {
-        let results = match self.context.db.search(&self.input, Some(500)) {
+    pub fn get_history(&mut self, state: &AppState) {
+        let results = match self.context.db.search(
+            &self.input,
+            HistoryFilters {
+                exit: None,
+                cwd: match state.scope {
+                    Scope::Cwd => Some(self.context.cwd.clone()),
+                    Scope::All => None,
+                },
+                limit: Some(500),
+            },
+        ) {
             Ok(h) => h,
             Err(err) => panic! {"{err}"},
         };
@@ -95,14 +115,14 @@ impl SearchApp {
             .unwrap_or(self.input.len())
     }
 
-    pub fn enter_char(&mut self, new_char: char) {
+    pub fn enter_char(&mut self, new_char: char, app_state: &AppState) {
         let idx = self.byte_index();
         self.input.insert(idx, new_char);
         self.move_cursor_right();
-        self.get_history();
+        self.get_history(app_state);
     }
 
-    pub fn delete_char(&mut self) {
+    pub fn delete_char(&mut self, app_state: &AppState) {
         let is_not_cursor_leftmost = self.cursor_position != 0;
         if is_not_cursor_leftmost {
             // Method "remove" is not used on the saved text for deleting the selected char.
@@ -121,7 +141,7 @@ impl SearchApp {
             // By leaving the selected one out, it is forgotten and therefore deleted.
             self.input = before_char_to_delete.chain(after_char_to_delete).collect();
             self.move_cursor_left();
-            self.get_history();
+            self.get_history(app_state);
         }
     }
 
@@ -144,10 +164,11 @@ impl StatefulWidgetRef for &mut SearchApp {
         Self: Sized,
     {
         // Layout locations
-        let [top, middle, bottom] = Layout::vertical(Constraint::from_percentages([25, 60, 15]))
-            .vertical_margin(4)
-            .horizontal_margin(4)
-            .areas(area);
+        let [top, middle, bottom, help] =
+            Layout::vertical(Constraint::from_percentages([25, 50, 15, 10]))
+                .vertical_margin(4)
+                .horizontal_margin(4)
+                .areas(area);
 
         SearchApp::render_title(top, buf, self.get_history_count());
         SearchApp::render_history_list(
@@ -157,11 +178,13 @@ impl StatefulWidgetRef for &mut SearchApp {
             &mut state.list_state,
             &self.now,
         );
-        SearchApp::render_query_box(bottom, buf, self.input.as_str());
+        SearchApp::render_query_box(bottom, buf, self.input.as_str(), state);
         state.cusor_position = Position::new(
-            bottom.x + u16::try_from(self.cursor_position).unwrap(),
-            bottom.y,
+            bottom.x + 9 + u16::try_from(self.cursor_position).unwrap(),
+            bottom.y + 1,
         );
+
+        SearchApp::render_shortcuts(help, buf, state);
     }
 }
 
@@ -176,7 +199,6 @@ impl SearchApp {
             History"
         ))
         .render_ref(left, buf);
-        // TODO: get a count query into the UI.
         Paragraph::new(format!("history count: {history_count}"))
             .alignment(Alignment::Right)
             .render_ref(right, buf);
@@ -194,12 +216,27 @@ impl SearchApp {
         list_state: &mut ListState,
         now: &dyn Fn() -> OffsetDateTime,
     ) {
+        let shortcuts = if list_state.selected().is_some() {
+            let selected_idx = list_state.selected().unwrap();
+            [
+                selected_idx + 1,
+                selected_idx + 2,
+                selected_idx + 3,
+                selected_idx + 4,
+                selected_idx + 5,
+            ]
+        } else {
+            [1, 2, 3, 4, 5]
+        };
         StatefulWidgetRef::render_ref(
-            &List::new(
-                history
-                    .iter()
-                    .map(|h| SearchApp::history_to_list_item(h, now)),
-            )
+            &List::new(history.iter().enumerate().map(|(i, h)| {
+                let shortcut = if shortcuts.contains(&i) {
+                    Some(shortcuts.iter().position(|&pos| pos == i).expect("not in") + 1)
+                } else {
+                    None
+                };
+                SearchApp::history_to_list_item(h, now, shortcut)
+            }))
             .highlight_style(Style::default().fg(Color::Green))
             .highlight_symbol(">>")
             .highlight_spacing(HighlightSpacing::Always)
@@ -211,17 +248,50 @@ impl SearchApp {
     }
 
     /// Renders the cursor and input query.
-    fn render_query_box(area: Rect, buf: &mut Buffer, input: &str) {
+    fn render_query_box(area: Rect, buf: &mut Buffer, input: &str, app_state: &AppState) {
+        let [top, bottom] = Layout::vertical([Constraint::Length(2), Constraint::Fill(1)])
+            .horizontal_margin(9)
+            .vertical_margin(1)
+            .areas(area);
+
+        let scope = match app_state.scope {
+            Scope::Cwd => app_state.cwd.as_str(),
+            Scope::All => "(Everything)",
+        };
+
+        Paragraph::new(scope).style(Style::new().light_cyan()).render_ref(bottom, buf);
         Paragraph::new(input)
             .style(Style::default().yellow())
-            .render_ref(area, buf);
+            .render_ref(top, buf);
+    }
+
+    fn render_shortcuts(area: Rect, buf: &mut Buffer, _app_state: &AppState) {
+        let [top, bottom] =
+            Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(area);
+        Paragraph::new("Shortcuts").render_ref(top, buf);
+        let tab =
+            Line::default().spans([Span::default().content("<TAB>: Toggle cwd or Global scope")]);
+        let quick_pick =
+            Line::default().spans([Span::default().content("<Alt + 1..5>: Quick Pick")]);
+        let shortcuts = List::new([tab, quick_pick]);
+        WidgetRef::render_ref(&shortcuts, bottom, buf);
     }
 
     /// Generates a `ListItem` for the provided `History`.
-    fn history_to_list_item<'a>(h: &'a History, now: &dyn Fn() -> OffsetDateTime) -> ListItem<'a> {
+    fn history_to_list_item<'a>(
+        h: &'a History,
+        now: &dyn Fn() -> OffsetDateTime,
+        shortcut: Option<usize>,
+    ) -> ListItem<'a> {
+        let shortcut_span = if shortcut.is_some() {
+            Span::styled(format!(" {}", shortcut.unwrap()), Style::new().magenta())
+        } else {
+            Span::default().content("  ")
+        };
+
         let line = Line::default().spans([
-            // Padding
-            Span::default().content(" "),
+            // Shortcut
+            shortcut_span,
             // The time since the command was run, color coded by exit_code
             Span::styled(
                 format!("{:>4}", SearchApp::time_since(&now, h)),
