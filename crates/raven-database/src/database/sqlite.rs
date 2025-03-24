@@ -7,7 +7,7 @@ use raven_common::utils::get_data_dir;
 use rusqlite::{Connection, DropBehavior, OpenFlags, ToSql, named_params};
 use time::OffsetDateTime;
 
-use crate::history::model::History;
+use crate::{history::model::History, HistoryFilters};
 
 use super::{Database, DatabaseError};
 
@@ -176,8 +176,10 @@ impl Database for Sqlite {
         }
     }
 
-    fn search(&self, query: &str, limit: Option<usize>) -> Result<Vec<History>, DatabaseError> {
+    fn search(&self, query: &str, filters:HistoryFilters) -> Result<Vec<History>, DatabaseError> {
         debug!("search with query: {query}");
+
+        let mut params: Vec<(&str, &dyn ToSql)> = Vec::new();
 
         let mut sql_query = Query::select()
             .column("id")
@@ -189,22 +191,36 @@ impl Database for Sqlite {
             .orderby("timestamp", "DESC")
             .to_owned();
 
-        if let Some(limit) = limit {
+        if let Some(limit) = filters.limit {
             sql_query.limit(limit);
         }
 
-        let params: &[(&str, &dyn ToSql)] = if query.is_empty() {
-            &[]
+        let exit = filters.exit.as_ref();
+        if exit.is_some() {
+            sql_query.r#where("exit_code");
+            params.push((":exit_code", &exit));
+        }
+
+        let cwd = filters.cwd.as_ref();
+        if cwd.is_some() {
+            sql_query.r#where("cwd");
+            params.push((":cwd", &cwd));
+        }
+
+        let q = if query.is_empty() {
+            None
         } else {
-            sql_query.like("command");
-            named_params! {
-                ":command": format!("%{query}%")
-            }
+            Some(format!("%{query}%"))
         };
+
+        if q.is_some() {
+            sql_query.like("command");
+            params.push((":command", &q));
+        }
 
         let mut stmt = self.conn.prepare(sql_query.to_sql().as_str())?;
 
-        match stmt.query_map(params, |row| {
+        match stmt.query_map(&*params, |row| {
             Ok(History::builder()
                 .id(row.get("id")?)
                 .command(row.get("command")?)

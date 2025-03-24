@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::history::model::History;
+use crate::{history::model::History, HistoryFilters};
 pub mod sqlite;
 
 #[derive(Debug, Clone)]
@@ -58,5 +58,5 @@ pub trait Database {
     ///
     /// # Errors
     /// Will return `Err` if the database Encountered an issue.
-    fn search(&self, query: &str, limit: Option<usize>) -> Result<Vec<History>, DatabaseError>;
+    fn search(&self, query: &str, filters: HistoryFilters) -> Result<Vec<History>, DatabaseError>;
 }

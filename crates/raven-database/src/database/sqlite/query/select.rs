@@ -82,7 +82,7 @@ impl<'a> SelectStatement<'a> {
         Self::default()
     }
 
-    /// Add a COUNT(column_name) AS alias in the selected fields.
+    /// Add a `COUNT(column_name)` AS alias in the selected fields.
     ///
     /// * `column_name`: The name of the column to count. Can be "*" to count all rows.
     /// * `alias`: The alias for the column in the returned rows.
