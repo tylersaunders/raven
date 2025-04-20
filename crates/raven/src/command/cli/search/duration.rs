@@ -1,6 +1,23 @@
 use core::fmt;
 use std::{ops::ControlFlow, time::Duration};
 
+/// Formats a `Duration` into a human-readable string, showing only the
+/// most significant time unit.
+///
+/// Examples:
+/// - 125 seconds -> "2m"
+/// - 60 seconds -> "1m"
+/// - 5 seconds -> "5s"
+/// - 500 milliseconds -> "500ms"
+/// - 0 duration -> "0s"
+///
+/// # Arguments
+///
+/// * `f` - The `Duration` to format.
+///
+/// # Returns
+///
+/// A `String` representation of the duration.
 pub fn format_duration(f: Duration) -> String {
     struct F(Duration);
     impl fmt::Display for F {
@@ -20,9 +37,23 @@ fn format_duration_into(dur: std::time::Duration, f: &mut fmt::Formatter<'_>) ->
         }
     }
 
-    // impl taken and modified from
-    // https://github.com/tailhook/humantime/blob/master/src/duration.rs#L295-L331
-    // Copyright (c) 2016 The humantime Developers
+    /// Helper function to format a `Duration` into a `fmt::Formatter`.
+    ///
+    /// This function calculates the time units and writes the largest non-zero
+    /// unit and its value (e.g., "5m", "10s") to the formatter. If the duration
+    /// is zero, it writes "0s".
+    ///
+    /// Based on implementation from the `humantime` crate:
+    /// <https://github.com/tailhook/humantime/blob/master/src/duration.rs#L295-L331>
+    ///
+    /// # Arguments
+    ///
+    /// * `dur` - The `Duration` to format.
+    /// * `f` - The `fmt::Formatter` to write the output to.
+    ///
+    /// # Returns
+    ///
+    /// A `fmt::Result` indicating success or failure.
     fn fmt(f: std::time::Duration) -> ControlFlow<(&'static str, u64), ()> {
         let secs = f.as_secs();
         let nanos = f.subsec_nanos();
