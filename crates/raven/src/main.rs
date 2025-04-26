@@ -52,8 +52,12 @@ fn main() {
 
     #[cfg(not(debug_assertions))]
     {
+        let log_file =
+            Box::new(File::create(get_data_dir().join(LOG_FILE)).expect("Cannot create log file"));
         let env = Env::new().filter_or("RAVEN_LOG", "error");
-        todo!("setup error logging for release build")
+        let mut builder = Builder::from_env(env);
+        builder.target(Target::Pipe(log_file));
+        builder.init();
     }
 
     Raven::parse().run();
