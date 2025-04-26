@@ -4,7 +4,7 @@ bindkey -M viins '^[[A' raven-search-history-up
 bindkey -M emacs '^[OA' raven-search-history-up
 bindkey -M vicmd '^[OA' raven-search-history-up
 bindkey -M viins '^[OA' raven-search-history-up
-bindkey -M vicmd 'k' raven-search-history-up-vicmd";
+bindkey -M vicmd 'k' raven-search-history-up";
 
 const BIND_CTRL_R: &str = r"bindkey -M emacs '^r' raven-search-history
 bindkey -M viins '^r' raven-search-history

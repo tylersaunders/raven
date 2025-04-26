@@ -6,6 +6,17 @@ _raven_preexec() {
   export RAVEN_HISTORY_ID="$id"
 }
 
+_zsh_autosuggest_strategy_raven() {
+  typeset -g suggestion
+  suggestion=$(RAVEN_QUERY="$1" raven search --limit 1 --suggest)
+}
+
+if [ -n "${ZSH_AUTOSUGGEST_STRATEGY:-}" ]; then
+  ZSH_AUTOSUGGEST_STRATEGY=("raven" "${ZSH_AUTOSUGGEST_STRATEGY[@]}")
+ else
+  ZSH_AUTOSUGGEST_STRATEGY=("raven")
+fi
+
 _raven_precmd() {
   local EXIT="$?"
   [[ -z "${RAVEN_HISTORY_ID:-}" ]] && return

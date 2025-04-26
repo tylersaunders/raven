@@ -16,11 +16,12 @@ pub struct Context {
 }
 
 /// Optional filters that can be used for searching for History objects.
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct HistoryFilters {
     pub exit: Option<i64>,
     pub cwd: Option<String>,
     pub limit: Option<usize>,
+    pub suggest: bool,
 }
 
 #[must_use]

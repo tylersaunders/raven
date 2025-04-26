@@ -59,6 +59,7 @@ impl SearchApp {
                     Scope::All => None,
                 },
                 limit: Some(500),
+                suggest: false,
             },
         ) {
             Ok(h) => h,

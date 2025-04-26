@@ -16,14 +16,15 @@ pub struct Cmd {
     #[arg(long, short)]
     cwd: Option<String>,
 
-    // Filter search by exit code
+    /// Filter search by exit code
     #[arg(long, short)]
     exit: Option<i64>,
 
-    // Limit the number of results
+    /// Limit the number of results
     #[arg(long, short)]
     limit: Option<usize>,
 
+    /// The command to search for
     query: Option<Vec<String>>,
 
     /// Flag that tells raven it was invoked from a shell up-key binding.
@@ -33,6 +34,10 @@ pub struct Cmd {
     /// Open interactive search UI
     #[arg(long, short)]
     interactive: bool,
+
+    /// [QUERY] is used as a prefix to generate a suggestion.
+    #[arg(long, short)]
+    suggest: bool,
 }
 
 impl Cmd {
@@ -63,13 +68,19 @@ impl Cmd {
                 exit: self.exit,
                 cwd: self.cwd,
                 limit: self.limit,
+                suggest: self.suggest,
             };
+            debug!("search with filters {filters:?}");
             let Ok(entries) = run_non_interactive(&query, filters) else {
                 // All we can do is exit with failed at this point.
                 std::process::exit(1)
             };
 
             debug!("search had {} results", entries.len());
+            if let Some(first) = entries.first() {
+                debug!("first: {}", first.command);
+            }
+
             if entries.is_empty() {
                 std::process::exit(1)
             }

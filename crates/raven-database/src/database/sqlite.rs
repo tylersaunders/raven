@@ -225,7 +225,11 @@ impl Database for Sqlite {
 
         let q = if query.is_empty() {
             None
+        } else if filters.suggest {
+            // For suggestions, use QUERY as a prefix
+            Some(format!("{query}%"))
         } else {
+            // All other searches should treat QUERY as a substring
             Some(format!("%{query}%"))
         };
 
