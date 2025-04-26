@@ -7,8 +7,10 @@ description = "raven - remembering your shell history."
 raven-common = { path = "../raven-common" }
 raven-database = { path = "../raven-database" }
 clap = { workspace = true }
-time = { workspace = true }
-log = { workspace = true }
-env_logger = { workspace = true }
-ratatui = { workspace = true }
 crossterm = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+ratatui = { workspace = true }
+serde = { workspace = true }
+time = { workspace = true }
+toml = {workspace = true }

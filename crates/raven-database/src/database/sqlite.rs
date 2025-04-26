@@ -3,11 +3,14 @@ use std::fs;
 mod query;
 use log::{debug, error};
 use query::{Query, SqlString};
-use raven_common::utils::get_data_dir;
+use raven_common::{
+    config::config::{Config, load_config},
+    utils::get_data_dir,
+};
 use rusqlite::{Connection, DropBehavior, OpenFlags, ToSql, named_params};
 use time::OffsetDateTime;
 
-use crate::{history::model::History, HistoryFilters};
+use crate::{HistoryFilters, history::model::History};
 
 use super::{Database, DatabaseError};
 
@@ -25,11 +28,24 @@ impl Sqlite {
     ///
     /// Panics if a data directory for the database file cannot be found.
     #[must_use]
-    pub fn new() -> Self {
-        let _ = fs::create_dir_all(get_data_dir());
-        let path = get_data_dir().join(DATABASE_FILE);
+    pub fn new(config: &Config) -> Self {
+        let path = config
+            .database
+            .database_path
+            .clone()
+            .unwrap_or(get_data_dir());
+        let _ = fs::create_dir_all(&path);
+
+        let file = config
+            .database
+            .database_file
+            .clone()
+            .unwrap_or(String::from(DATABASE_FILE));
+
+        let database_path = path.join(file);
         let conn = get_connection(
-            path.to_str()
+            database_path
+                .to_str()
                 .expect("Could not generate database file path."),
         );
         Self { conn }
@@ -38,7 +54,7 @@ impl Sqlite {
 
 impl Default for Sqlite {
     fn default() -> Self {
-        Self::new()
+        Self::new(&load_config().expect("Failed to load config"))
     }
 }
 
@@ -176,7 +192,7 @@ impl Database for Sqlite {
         }
     }
 
-    fn search(&self, query: &str, filters:HistoryFilters) -> Result<Vec<History>, DatabaseError> {
+    fn search(&self, query: &str, filters: HistoryFilters) -> Result<Vec<History>, DatabaseError> {
         debug!("search with query: {query}");
 
         let mut params: Vec<(&str, &dyn ToSql)> = Vec::new();
@@ -261,7 +277,7 @@ impl Database for Sqlite {
 fn get_connection(path: &str) -> Connection {
     match Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE) {
         Ok(connection) => {
-            debug!("Opened {DATABASE_FILE}");
+            debug!("Opened {path}");
 
             // TODO: verify the schema for the established connection before returning.
             connection
@@ -273,7 +289,7 @@ fn get_connection(path: &str) -> Connection {
                 OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE
             )) {
                 Ok(connection) => {
-                    debug!("Created {DATABASE_FILE}");
+                    debug!("Created {path}");
                     initialize_database(&connection);
                     connection
                 }

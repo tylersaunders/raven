@@ -2,3 +2,8 @@
 name = "raven-common"
 edition = "2024"
 description = "raven - common code library."
+
+[dependencies]
+log = {workspace = true }
+serde = { workspace = true }
+toml = {workspace = true }

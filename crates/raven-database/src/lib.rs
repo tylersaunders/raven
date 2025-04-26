@@ -1,5 +1,5 @@
 use database::{Database, sqlite::Sqlite};
-use raven_common::utils;
+use raven_common::{config::config::{load_config, Config}, utils};
 
 pub mod database;
 pub mod history;
@@ -12,6 +12,7 @@ pub mod import;
 pub struct Context {
     pub cwd: String,
     pub db: Box<dyn Database>,
+    pub config: Config,
 }
 
 /// Optional filters that can be used for searching for History objects.
@@ -26,9 +27,11 @@ pub struct HistoryFilters {
 /// Fetch the current Raven context
 pub fn current_context() -> Context {
     let cwd = utils::get_current_dir();
+    let config = load_config().unwrap_or_default();
 
     Context {
         cwd,
-        db: Box::new(Sqlite::new()),
+        db: Box::new(Sqlite::new(&config)),
+        config
     }
 }

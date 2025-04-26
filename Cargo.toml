@@ -8,9 +8,11 @@ edition = "2024"
 
 [workspace.dependencies]
 clap = { version = "4.5.30", features = ["derive"] }
-time = "0.3.37"
-typed-builder = "0.20.0"
-log = "0.4.26"
-env_logger = "0.11.6"
-ratatui = {version = "0.29.0", features = ["unstable-widget-ref"]}
 crossterm = "0.28.1"
+env_logger = "0.11.6"
+log = "0.4.26"
+ratatui = {version = "0.29.0", features = ["unstable-widget-ref"]}
+serde = { version = "1.0.219", features = ["derive"]}
+time = "0.3.37"
+toml = "0.8.21"
+typed-builder = "0.20.0"

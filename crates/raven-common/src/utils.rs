@@ -25,10 +25,22 @@ pub fn get_home_dir() -> PathBuf {
 
 /// Fetch the data directory for raven to store data.
 ///
-/// Defaults to `$XDG_DATA_HOME` or `$HOME/.local.share/raven` if `$XDG_DATA_HOME` cannot be found.
+/// Defaults to `$XDG_DATA_HOME` or `$HOME/.local/share/raven` if `$XDG_DATA_HOME` cannot be found.
 pub fn get_data_dir() -> PathBuf {
     let data_dir = std::env::var("XDG_DATA_HOME").map_or_else(
         |_| get_home_dir().join(".local").join("share"),
+        PathBuf::from,
+    );
+    data_dir.join("raven")
+}
+
+/// Fetch the config directory for locating any user set raven configuration.
+///
+/// Defaults to `$XDG_CONFIG_HOME` or `$HOME/.config/raven` if `$XDG_CONFIG_HOME` cannot be found.
+#[must_use]
+pub fn get_config_dir() -> PathBuf {
+    let data_dir = std::env::var("XDG_CONFIG_HOME").map_or_else(
+        |_| get_home_dir().join(".config"),
         PathBuf::from,
     );
     data_dir.join("raven")
