@@ -1,5 +1,6 @@
 [package]
 name = "raven-database"
+version = { workspace = true }
 authors = { workspace = true }
 description = { workspace = true }
 repository = { workspace = true }
