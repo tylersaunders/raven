@@ -1,7 +1,11 @@
 [package]
 name = "raven-common"
-edition = "2024"
-description = "raven - common code library."
+authors = { workspace = true }
+description = { workspace = true }
+repository = { workspace = true }
+edition = { workspace = true }
+readme = { workspace = true }
+license = { workspace = true }
 
 [dependencies]
 log = {workspace = true }

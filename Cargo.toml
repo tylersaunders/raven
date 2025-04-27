@@ -4,7 +4,12 @@ resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
+authors = ["Tyler Saunders <tyler@thesummit.dev>"]
+description = "raven - remembering your shell history."
+repository = "https://github.com/tylersaunders/raven"
 edition = "2024"
+readme = "README.md"
+license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
 clap = { version = "4.5.30", features = ["derive"] }
