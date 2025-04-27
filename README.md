@@ -29,13 +29,15 @@ Raven cleverly swaps out your traditional, clunky history file for a sleek, sear
 
 ## Installation: Get Your Raven Perched 🛠️
 
-*(Instructions will vary depending on the actual implementation)*
+*Note: Currently, raven is only supported in linux environments.*
 
-**Option 1: Grab the pre-built binary (The Easiest Nest)**
+### Option 1: Grab the pre-built binary (The Easiest Nest)
 
-TODO: Setup Github actions for release builds.
+- Grab the latest [release]( https://github.com/tylersaunders/raven/releases/latest)
+- Update your shell's config (see Post-Installation steps below)
 
-**Option 2: Build from Source (For the Brave Crows)**
+
+### Option 2: Build from Source (For the Brave Crows)
 
 ```sh
 git clone https://github.com/tylersaunders/raven.git
@@ -46,7 +48,7 @@ cargo build --bin raven --release
 # Release binary will be raven/target/release/raven
 ```
 
-**Post-Installation:**
+### Post-Installation
 
 Ensure the `raven` binary is on your shell's path.
 You'll need to add a hook to your shell's configuration file (`.zshrc`):
@@ -56,15 +58,17 @@ You'll need to add a hook to your shell's configuration file (`.zshrc`):
 eval "$(raven init zsh)"
 ```
 
-Follow the specific instructions provided by `raven init --help` or the installation process.
+Import your existing shell history
+
+```sh
+raven import auto
+```
 
 ## Usage: Summoning Your Commands 🪄
 
 1.  **Automatic Capture:** Just use your shell as you normally would. Raven silently observes and records your commands in the background.
 2.  **Interactive Search:** Press a configured keybinding (e.g., `Ctrl+R` - configurable, of course!) to launch the Raven TUI.
 3.  **Search & Select:** Type to search, use arrow keys to navigate, and press `Enter` to select a command and place it on your prompt. `Esc` to quit.
-
-*(Add more specific usage details, keybindings, or examples as needed)*
 
 ## Contributing: Join the Flock! 🤝
 
