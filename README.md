@@ -1,8 +1,8 @@
 # Raven: Your Shell's Wise Old Bird for History 🐦‍⬛
 
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/tylersaunders/raven/ci.yml)
-![GitHub License](https://img.shields.io/github/license/tylersaunders/raven)
-![GitHub Release](https://img.shields.io/github/v/release/tylersaunders/raven)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/tylersaunders/raven/ci.yml)](https://github.com/tylersaunders/raven/actions/workflows/ci.yml)
+[![GitHub License](https://img.shields.io/github/license/tylersaunders/raven)](https://github.com/tylersaunders/raven/blob/main/LICENSE)
+[![GitHub Release](https://img.shields.io/github/v/release/tylersaunders/raven)](https://github.com/tylersaunders/raven/releases/latest)
 [![Bluesky](https://img.shields.io/badge/Bluesky-0285FF?logo=bluesky&logoColor=fff)](https://bsky.app/profile/tyler.thesummit.dev)
 
 Tired of `Ctrl+R` feeling like rummaging through a messy drawer? Do `.histfile` or `.zsh_history` files grow larger than your patience? Let **Raven** perch in your terminal and bring order to your command history chaos!
