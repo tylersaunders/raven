@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - *(logging)* Ensure data directory exists before creating log file
+- *(zsh)* Add support for non-extended zsh history import
 
 ### 📚 Documentation
 

@@ -47,7 +47,12 @@ impl Importer for Zsh {
 
     fn load(self, loader: &mut impl super::Loader) -> Result<(), ImportError> {
         if let Ok(lines) = read_lines(self.histpath) {
+            let now = OffsetDateTime::now_utc();
+            let mut count = 0;
+
             for line in lines.map_while(Result::ok) {
+                // ZSH with EXTENDED_HISTORY has a command that looks like:
+                //    : 1458291931:0;ls -l
                 if let Some(command) = line.strip_prefix(": ") {
                     let (time, elapsed) = command.split_once(':').unwrap();
                     let (_, command) = elapsed.split_once(';').unwrap();
@@ -59,6 +64,20 @@ impl Importer for Zsh {
                         .unwrap_or_else(OffsetDateTime::now_utc);
 
                     let imported = History::import().command(command).timestamp(time).build();
+
+                    let _ = loader.push(imported.into());
+                } else {
+                    // If the histfile isn't using extended history, use the entire line as the
+                    // command, and apply an offset to keep the ordering intact.
+
+                    let time_offset = time::Duration::seconds(count);
+                    count += 1;
+
+                    let imported = History::import()
+                        .command(line.trim_end())
+                        // Offset "now" time by the counter to preserve ordering
+                        .timestamp(now - time_offset)
+                        .build();
 
                     let _ = loader.push(imported.into());
                 }
