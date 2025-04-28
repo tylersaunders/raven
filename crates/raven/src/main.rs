@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{self, File};
 
 use clap::Parser;
 use command::RavenCmd;
@@ -42,6 +42,7 @@ fn main() {
     #[cfg(debug_assertions)]
     {
         // For debug builds, write logging to a raven.log file in the data dir.
+        let _ = fs::create_dir_all(get_data_dir());
         let log_file =
             Box::new(File::create(get_data_dir().join(LOG_FILE)).expect("Cannot create log file"));
         let env = Env::new().filter_or("RAVEN_LOG", "debug");
@@ -52,6 +53,7 @@ fn main() {
 
     #[cfg(not(debug_assertions))]
     {
+        let _ = fs::create_dir_all(get_data_dir());
         let log_file =
             Box::new(File::create(get_data_dir().join(LOG_FILE)).expect("Cannot create log file"));
         let env = Env::new().filter_or("RAVEN_LOG", "error");
