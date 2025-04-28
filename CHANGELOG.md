@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.1.1] - 2025-04-28
 
 ### 🐛 Bug Fixes
 
@@ -18,6 +18,10 @@ All notable changes to this project will be documented in this file.
 ### 🧪 Testing
 
 - *(search)* Add snapshot and unit tests for search ui
+
+### ⚙️ Miscellaneous Tasks
+
+- Bump version to 0.1.1
 
 ## [0.1.0] - 2025-04-27
 
