@@ -55,7 +55,9 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut SearchApp, state: &mut A
         }
         (KeyModifiers::NONE, KeyCode::Left) => app.move_cursor_left(),
         (KeyModifiers::NONE, KeyCode::Right) => app.move_cursor_right(),
-        (KeyModifiers::NONE, KeyCode::Char(to_insert)) => app.enter_char(to_insert, state),
+        (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(to_insert)) => {
+            app.enter_char(to_insert, state);
+        }
         (KeyModifiers::ALT, KeyCode::Char(shortcut)) => {
             let shortcuts = ['1', '2', '3', '4', '5'];
 
@@ -66,8 +68,7 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut SearchApp, state: &mut A
                     app.select(pos);
                 }
             }
-
-        },
+        }
         (KeyModifiers::NONE, KeyCode::Backspace) => app.delete_char(state),
         (KeyModifiers::NONE, KeyCode::Enter) => {
             if let Some(idx) = state.list_state.selected() {
