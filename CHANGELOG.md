@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### 🐛 Bug Fixes
+
+- *(search)* Allow shift key when typing in search input
+
 ## [0.1.1] - 2025-04-28
 
 ### 🐛 Bug Fixes
