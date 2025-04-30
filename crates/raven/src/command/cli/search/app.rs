@@ -45,6 +45,7 @@ pub struct AppState {
     pub list_state: ListState,
     pub scope: Scope,
     pub cwd: String,
+    pub confirming_delete: bool,
 }
 
 impl SearchApp {
@@ -150,6 +151,62 @@ impl SearchApp {
     pub fn select(&mut self, idx: usize) {
         self.selected = Some(self.commands[idx].clone());
         self.quit();
+    }
+
+    /// Sets the app state to wait for delete confirmation.
+    pub fn initiate_delete(state: &mut AppState) {
+        if state.list_state.selected().is_some() {
+            state.confirming_delete = true;
+        }
+    }
+
+    /// Cancels the delete confirmation state.
+    pub fn cancel_delete(state: &mut AppState) {
+        state.confirming_delete = false;
+    }
+
+    /// Confirms the deletion of the selected item.
+    /// TODO: Implement actual database deletion and error handling.
+    pub fn confirm_delete(&mut self, state: &mut AppState) {
+        if let Some(selected_index) = state.list_state.selected() {
+            if selected_index < self.commands.len() {
+                let item_to_delete = &self.commands[selected_index];
+                let item_id = item_to_delete.id;
+
+                // --- Placeholder for actual DB call ---
+                // TODO: Add proper error handling and display to user in TUI
+                match self.context.db.delete(item_id) {
+                    Ok(()) => {
+                        // Remove from the UI list *only on successful DB delete*
+                        self.commands.remove(selected_index);
+
+                        // Adjust selection after removal
+                        if self.commands.is_empty() {
+                            state.list_state.select(None);
+                        } else if selected_index >= self.commands.len() {
+                            // If the last item was deleted, select the new last item
+                            state
+                                .list_state
+                                .select(Some(self.commands.len().saturating_sub(1)));
+                        } else {
+                            // Otherwise, the selection naturally moves to the next item,
+                            // or stays if it was already pointing correctly.
+                            // Ensure the index is valid if list shrunk
+                            state.list_state.select(Some(
+                                selected_index.min(self.commands.len().saturating_sub(1)),
+                            ));
+                        }
+                    }
+                    Err(e) => {
+                        // TODO: Display this error in the TUI status bar instead of printing
+                        eprintln!("Failed to delete history entry: {e}");
+                    }
+                }
+                // --- End Placeholder ---
+            }
+        }
+        // Always reset confirmation state after attempting
+        state.confirming_delete = false;
     }
 }
 
@@ -268,16 +325,46 @@ impl SearchApp {
             .render_ref(top, buf);
     }
 
-    fn render_shortcuts(area: Rect, buf: &mut Buffer, _app_state: &AppState) {
+    /// Renders the shortcuts or a confirmation prompt in the specified area.
+    ///
+    /// Depending on the `confirming_delete` state in `AppState`, this function
+    /// either displays the standard shortcuts (Tab, Alt+1..5, Alt+d) or a
+    /// confirmation prompt for deleting an entry.
+    ///
+    /// # Arguments
+    ///
+    /// * `area` - The `Rect` area where the shortcuts or prompt should be rendered.
+    /// * `buf` - The `Buffer` to render onto.
+    /// * `state` - The current `AppState` containing the application state.
+    fn render_shortcuts(area: Rect, buf: &mut Buffer, state: &AppState) {
         let [top, bottom] =
             Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(area);
-        Paragraph::new("Shortcuts").render_ref(top, buf);
-        let tab =
-            Line::default().spans([Span::default().content("<TAB>: Toggle cwd or Global scope")]);
-        let quick_pick =
-            Line::default().spans([Span::default().content("<Alt + 1..5>: Quick Pick")]);
-        let shortcuts = List::new([tab, quick_pick]);
-        WidgetRef::render_ref(&shortcuts, bottom, buf);
+
+        if state.confirming_delete {
+            // Render confirmation prompt
+            let confirm_text = Line::from(vec![
+                Span::styled("Delete entry? ", Style::default().fg(Color::Yellow)),
+                Span::styled("[y]", Style::default().fg(Color::Green).bold()),
+                Span::styled("/", Style::default().fg(Color::Gray)),
+                Span::styled("[N]", Style::default().fg(Color::Red).bold()),
+            ]);
+            Paragraph::new(confirm_text)
+                .alignment(Alignment::Left)
+                .render_ref(bottom, buf); // Render prompt in the bottom area
+            // Optionally clear the top area or change the title if needed
+            Paragraph::new("Confirm Delete").render_ref(top, buf); // Change title
+        } else {
+            // Render normal shortcuts
+            Paragraph::new("Shortcuts").render_ref(top, buf); // Keep original title
+            let tab = Line::default()
+                .spans([Span::default().content("<TAB>: Toggle cwd or Global scope")]);
+            let quick_pick =
+                Line::default().spans([Span::default().content("<Alt + 1..5>: Quick Pick")]);
+            let delete_key = Line::default()
+                .spans([Span::default().content("<Alt + d>: Delete selected entry")]);
+            let shortcuts = List::new([tab, quick_pick, delete_key]);
+            WidgetRef::render_ref(&shortcuts, bottom, buf);
+        }
     }
 
     /// Generates a `ListItem` for the provided `History`.
@@ -336,6 +423,7 @@ mod tests {
             list_state: ListState::default(),
             scope: Scope::All,
             cwd: String::from("/test/dir"),
+            confirming_delete: false, // Initialize here
         }
     }
     // --- Mock Database for Testing ---
@@ -423,6 +511,10 @@ mod tests {
             &self,
             _history: &History,
         ) -> Result<(), raven_database::database::DatabaseError> {
+            unimplemented!()
+        }
+
+        fn delete(&self, _id: i64) -> Result<(), DatabaseError> {
             unimplemented!()
         }
         // ... etc for other trait methods
@@ -713,6 +805,7 @@ mod tests {
             list_state: ListState::default(),
             scope: Scope::Cwd,
             cwd: String::new(),
+            confirming_delete: false, // Initialize here
         };
         app.get_history(&app_state);
         println!("{:?}", app.commands);

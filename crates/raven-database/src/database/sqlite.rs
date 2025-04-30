@@ -112,7 +112,7 @@ impl Database for Sqlite {
                 Err(err) => {
                     return Err(err.into());
                 }
-            };
+            }
         }
         drop(stmt);
         let _ = tx.commit();
@@ -257,6 +257,46 @@ impl Database for Sqlite {
                 Ok(results)
             }
             Err(e) => Err(e.into()),
+        }
+    }
+
+    fn delete(&self, id: i64) -> Result<(), DatabaseError> {
+        debug!("Deleting history entry with id: {}", id);
+        let query = Query::delete().table("history").r#where("id").to_owned();
+
+        match self.conn.execute(&query.to_sql(), [id]) {
+            Ok(rows_affected) => {
+                if rows_affected == 1 {
+                    debug!("Successfully deleted history entry with id: {}", id);
+                    Ok(())
+                } else if rows_affected == 0 {
+                    // It's not necessarily an error if the ID didn't exist,
+                    // but we can log it or return a specific error if needed.
+                    debug!(
+                        "Attempted to delete non-existent history entry with id: {}",
+                        id
+                    );
+                    // Return Ok(()) as the state is "entry with id does not exist", which is the goal.
+                    // Alternatively, return an error:
+                    // Err(DatabaseError { msg: format!("History entry with id {} not found for deletion", id) })
+                    Ok(())
+                } else {
+                    // This shouldn't happen with a primary key constraint
+                    error!(
+                        "Unexpected number of rows ({}) affected when deleting history entry with id: {}",
+                        rows_affected, id
+                    );
+                    Err(DatabaseError {
+                        msg: format!(
+                            "Unexpected number of rows ({rows_affected}) affected during deletion",
+                        ),
+                    })
+                }
+            }
+            Err(e) => {
+                error!("Failed to delete history entry with id {}: {}", id, e);
+                Err(e.into())
+            }
         }
     }
 

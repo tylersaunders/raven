@@ -21,6 +21,7 @@ pub fn history(query: &[String]) -> Option<History> {
         list_state: ListState::default(),
         scope: Scope::Cwd,
         cwd: utils::get_current_dir(),
+        confirming_delete: false,
     };
 
     // Fetch initial list
@@ -56,7 +57,21 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut SearchApp, state: &mut A
         (KeyModifiers::NONE, KeyCode::Left) => app.move_cursor_left(),
         (KeyModifiers::NONE, KeyCode::Right) => app.move_cursor_right(),
         (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(to_insert)) => {
-            app.enter_char(to_insert, state);
+            if state.confirming_delete {
+                match to_insert {
+                    'y' => app.confirm_delete(state),
+                    'n' => SearchApp::cancel_delete(state),
+                    _ => {}
+                }
+            } else {
+                app.enter_char(to_insert, state);
+            }
+        }
+        // Add keybinding for delete
+        (KeyModifiers::ALT, KeyCode::Char('d')) => {
+            if state.list_state.selected().is_some() {
+                SearchApp::initiate_delete(state);
+            }
         }
         (KeyModifiers::ALT, KeyCode::Char(shortcut)) => {
             let shortcuts = ['1', '2', '3', '4', '5'];

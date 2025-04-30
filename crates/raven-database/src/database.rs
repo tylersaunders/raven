@@ -52,6 +52,15 @@ pub trait Database {
     /// Will return `Err` if the database Encountered an issue.
     fn update(&self, history: &History) -> Result<(), DatabaseError>;
 
+
+    /// Delete a history entry by its unique ID.
+    ///
+    /// * `id`: The ID of the history entry to delete.
+    ///
+    /// # Errors
+    /// Will return `Err` if the database encountered an issue during deletion.
+    fn delete(&self, id: i64) -> Result<(), DatabaseError>;
+
     /// Search over history records and return a list of matching results.
     ///
     /// * `limit`: The maximum amount of results to return.

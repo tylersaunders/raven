@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### 🚀 Features
+
+- *(search)* Allow deleting history entries
+
 ### 🐛 Bug Fixes
 
 - *(search)* Allow shift key when typing in search input
