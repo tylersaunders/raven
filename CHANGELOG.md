@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### 🚀 Features
 
 - *(search)* Allow deleting history entries
+- *(search)* Refine layout
 
 ### 🐛 Bug Fixes
 

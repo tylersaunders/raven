@@ -222,27 +222,31 @@ impl StatefulWidgetRef for &mut SearchApp {
         Self: Sized,
     {
         // Layout locations
-        let [top, middle, bottom, help] =
-            Layout::vertical(Constraint::from_percentages([25, 50, 15, 10]))
-                .vertical_margin(4)
-                .horizontal_margin(4)
-                .areas(area);
+        let [header, hist_list, query_box, shortcuts] = Layout::vertical([
+            Constraint::Length(4), // header
+            Constraint::Min(5),    // hist_list
+            Constraint::Length(5), // query_box
+            Constraint::Length(5), // shortcuts
+        ])
+        .vertical_margin(4)
+        .horizontal_margin(4)
+        .areas(area);
 
-        SearchApp::render_title(top, buf, self.get_history_count());
+        SearchApp::render_title(header, buf, self.get_history_count());
         SearchApp::render_history_list(
-            middle,
+            hist_list,
             buf,
             &self.commands,
             &mut state.list_state,
             &self.now,
         );
-        SearchApp::render_query_box(bottom, buf, self.input.as_str(), state);
+        SearchApp::render_query_box(query_box, buf, self.input.as_str(), state);
         state.cusor_position = Position::new(
-            bottom.x + 9 + u16::try_from(self.cursor_position).unwrap(),
-            bottom.y + 1,
+            query_box.x + 9 + u16::try_from(self.cursor_position).unwrap(),
+            query_box.y + 1,
         );
 
-        SearchApp::render_shortcuts(help, buf, state);
+        SearchApp::render_shortcuts(shortcuts, buf, state);
     }
 }
 
@@ -358,8 +362,11 @@ impl SearchApp {
             Paragraph::new("Shortcuts").render_ref(top, buf); // Keep original title
             let tab = Line::default()
                 .spans([Span::default().content("<TAB>: Toggle cwd or Global scope")]);
-            let quick_pick =
-                Line::default().spans([Span::default().content("<Alt + 1..5>: Quick Pick")]);
+            let quick_pick = Line::default().spans([
+                Span::default().content("<Alt + "),
+                Span::default().fg(Color::Magenta).content("1..5"),
+                Span::default().content(">: Quick Pick"),
+            ]);
             let delete_key = Line::default()
                 .spans([Span::default().content("<Alt + d>: Delete selected entry")]);
             let shortcuts = List::new([tab, quick_pick, delete_key]);
