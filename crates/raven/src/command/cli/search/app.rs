@@ -302,6 +302,7 @@ impl SearchApp {
             .highlight_style(Style::default().fg(Color::Green))
             .highlight_symbol(">>")
             .highlight_spacing(HighlightSpacing::Always)
+            .scroll_padding(6)
             .direction(ListDirection::BottomToTop),
             area,
             buf,

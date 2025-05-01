@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - *(search)* Allow deleting history entries
 - *(search)* Refine layout
+- *(search)* Add scroll_padding to history list
 
 ### 🐛 Bug Fixes
 
