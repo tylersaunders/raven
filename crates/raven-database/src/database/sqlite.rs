@@ -4,7 +4,7 @@ mod query;
 use log::{debug, error};
 use query::{Query, SqlString};
 use raven_common::{
-    config::config::{Config, load_config},
+    config::{Config, load_config},
     utils::get_data_dir,
 };
 use rusqlite::{Connection, DropBehavior, OpenFlags, ToSql, named_params};

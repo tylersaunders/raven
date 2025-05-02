@@ -420,7 +420,7 @@ mod tests {
     use insta::assert_snapshot;
     use ratatui::{Terminal, backend::TestBackend, layout::Position};
 
-    use raven_common::config::config::Config;
+    use raven_common::config::Config;
     use raven_database::database::{Database, DatabaseError};
     use time::{Duration, OffsetDateTime};
 

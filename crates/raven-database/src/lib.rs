@@ -1,5 +1,5 @@
 use database::{Database, sqlite::Sqlite};
-use raven_common::{config::config::{load_config, Config}, utils};
+use raven_common::{config::{load_config, Config}, utils};
 
 pub mod database;
 pub mod history;
