@@ -15,6 +15,20 @@ use crate::{HistoryFilters, history::model::History};
 use super::{Database, DatabaseError};
 
 const DATABASE_FILE: &str = "raven.db";
+const LATEST_STABLE_SCHEMA: SchemaVersion = SchemaVersion::V1;
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[repr(u32)]
+enum SchemaVersion {
+    V1 = 1,
+    // Add future versions here, e.g., V2 = 2,
+}
+
+impl SchemaVersion {
+    fn to_u32(self) -> u32 {
+        self as u32
+    }
+}
 
 /// Sqlite database wrapper using rusqlite
 pub struct Sqlite {
@@ -311,6 +325,17 @@ impl Database for Sqlite {
     }
 }
 
+/// Get the user_version PRAGMA from the SQLite database.
+fn get_user_version(conn: &Connection) -> Result<u32, rusqlite::Error> {
+    conn.query_row("PRAGMA user_version;", [], |row| row.get(0))
+}
+
+/// Set the user_version PRAGMA on the SQLite database.
+fn set_user_version(conn: &Connection, version: u32) -> Result<(), rusqlite::Error> {
+    conn.execute(&format!("PRAGMA user_version = {version};"), [])?;
+    Ok(())
+}
+
 /// Attempt to open a connection to `path`.
 ///
 /// Will initially try to open as RW, but if the file does not exist, this method will also
@@ -320,12 +345,28 @@ impl Database for Sqlite {
 /// * `path`: Full path to the sqlite database file.
 fn get_connection(path: &str) -> Connection {
     match Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE) {
-        Ok(connection) => {
+        Ok(mut connection) => {
             debug!("Opened {path}");
-
-            // TODO: verify the schema for the established connection before returning.
+            match get_user_version(&connection) {
+                Ok(current_version) => {
+                    debug!("Current database version: {current_version}");
+                    match current_version {
+                        0 => initialize_database(&connection),
+                        _ => {
+                            if current_version < LATEST_STABLE_SCHEMA.to_u32() {
+                                run_migrations(&mut connection, current_version)
+                                    .expect("Failure during migrations when opening database.");
+                            }
+                        }
+                    }
+                }
+                Err(err) => {
+                    debug!("Unable to verify Raven database version: {err}");
+                }
+            }
             connection
         }
+
         Err(err) => {
             error!("Could not open: {err}");
             match dbg!(Connection::open_with_flags(
@@ -348,9 +389,353 @@ fn get_connection(path: &str) -> Connection {
 /// * `conn`: Connection to the Raven database.
 fn initialize_database(conn: &Connection) {
     debug!("initialize_database: create_history");
-    let create_history = include_str!("../sql/create/history.sql");
+    let create_history = include_str!("./sqlite/sql/create/history.sql");
     match conn.execute(create_history, []) {
         Ok(_) => (),
         Err(err) => panic!("Error in initialize_database: {err}"),
+    }
+
+    // Update the pragma user_version to V1.
+    match set_user_version(conn, SchemaVersion::V1.to_u32()) {
+        Ok(()) => (),
+        Err(err) => debug!("Error setting user_version pragma {err}"),
+    }
+}
+
+/// Applies necessary schema migrations to bring the database up to the latest version.
+///
+/// * `conn`: Connection to the Raven database.
+/// * `current_version`: The current schema version reported by the database.
+fn run_migrations(conn: &mut Connection, current_version: u32) -> Result<(), DatabaseError> {
+    debug!(
+        "Running migrations from version {} up to {}",
+        current_version,
+        LATEST_STABLE_SCHEMA.to_u32()
+    );
+
+    let mut version_to_migrate_from = current_version;
+    let target_version = LATEST_STABLE_SCHEMA.to_u32();
+
+    while version_to_migrate_from < target_version {
+        let next_version = version_to_migrate_from + 1;
+        let migration_script_path =
+            format!("sql/migrate/v{version_to_migrate_from}_to_v{next_version}.sql",);
+        debug!("Attempting to apply migration: {}", migration_script_path);
+
+        let mut tx = match conn.transaction() {
+            Ok(tx) => tx,
+            Err(e) => {
+                error!("Failed to start transaction for migration: {}", e);
+                return Err(e.into());
+            }
+        };
+        tx.set_drop_behavior(DropBehavior::Rollback); // Ensure rollback on drop if not committed
+
+        match fs::read_to_string(&migration_script_path) {
+            Ok(migration_sql) => {
+                debug!("Executing migration script:\n{}", migration_sql);
+                if let Err(e) = tx.execute_batch(&migration_sql) {
+                    error!(
+                        "Failed to execute migration script {}: {}",
+                        migration_script_path, e
+                    );
+                    // Transaction will be rolled back automatically on drop
+                    return Err(DatabaseError {
+                        msg: format!(
+                            "Migration script failed: {migration_script_path}. Error: {e}",
+                        ),
+                    });
+                }
+
+                // Update the user_version *within* the transaction
+                if let Err(e) = set_user_version(&tx, next_version) {
+                    error!(
+                        "Failed to set user_version to {} after migration {}: {}",
+                        next_version, migration_script_path, e
+                    );
+                    // Transaction will be rolled back automatically on drop
+                    return Err(e.into());
+                }
+
+                // Commit the transaction
+                if let Err(e) = tx.commit() {
+                    error!(
+                        "Failed to commit transaction after migration {}: {}",
+                        migration_script_path, e
+                    );
+                    return Err(e.into());
+                }
+                debug!("Successfully applied migration: {}", migration_script_path);
+            }
+            Err(e) => {
+                error!(
+                    "Failed to read migration script {}: {}",
+                    migration_script_path, e
+                );
+                // Transaction will be rolled back automatically on drop
+                return Err(DatabaseError {
+                    msg: format!(
+                        "Could not read migration script: {migration_script_path}. Error: {e}",
+                    ),
+                });
+            }
+        }
+
+        version_to_migrate_from = next_version;
+    }
+
+    debug!(
+        "Migrations complete. Database is at version {}",
+        version_to_migrate_from
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::history::model::History;
+    use rusqlite::Connection;
+    use std::time::Duration;
+    use time::OffsetDateTime;
+
+    // Helper to create an in-memory database and initialize the schema
+    fn memory_db() -> Sqlite {
+        let conn = Connection::open_in_memory().expect("Failed to open in-memory database");
+        initialize_database(&conn); // Ensure schema is created
+        Sqlite { conn }
+    }
+
+    // Helper to create a sample history entry
+    fn sample_history(id: i64, command: &str) -> History {
+        History::builder()
+            .id(id)
+            .timestamp(OffsetDateTime::now_utc())
+            .command(command.to_string())
+            .cwd("/tmp".to_string())
+            .exit_code(0)
+            .build()
+    }
+
+    #[test]
+    fn test_save_and_get() {
+        let mut db = memory_db();
+        let history_in = sample_history(1, "echo test");
+
+        let id = db.save(&history_in).expect("Failed to save history");
+        assert!(id > 0);
+
+        let history_out = db
+            .get(id)
+            .expect("Failed to get history")
+            .expect("History not found");
+
+        assert_eq!(history_out.id, id);
+        assert_eq!(history_out.command, history_in.command);
+        assert_eq!(history_out.cwd, history_in.cwd);
+        assert_eq!(history_out.exit_code, history_in.exit_code);
+        // Timestamps might have slight precision differences, compare within a tolerance if needed
+        assert_eq!(
+            history_out.timestamp.unix_timestamp(),
+            history_in.timestamp.unix_timestamp()
+        );
+    }
+
+    #[test]
+    fn test_save_bulk() {
+        let mut db = memory_db();
+        let histories = vec![
+            sample_history(1, "echo 1"),
+            sample_history(2, "echo 2"),
+            sample_history(3, "echo 3"),
+        ];
+
+        let ids = db
+            .save_bulk(&histories)
+            .expect("Failed to save bulk history");
+        assert_eq!(ids.len(), 3);
+        assert!(ids.iter().all(|&id| id > 0));
+
+        let total = db.get_history_total().expect("Failed to get total");
+        assert_eq!(total, 3);
+    }
+
+    #[test]
+    fn test_update() {
+        let mut db = memory_db();
+        let mut history = sample_history(1, "initial command");
+
+        let id = db.save(&history).expect("Failed to save history");
+        history.id = id; // Set the ID after saving
+        history.command = "updated command".to_string();
+        history.exit_code = 1;
+
+        db.update(&history).expect("Failed to update history");
+
+        let updated_history = db
+            .get(id)
+            .expect("Failed to get updated history")
+            .expect("Updated history not found");
+
+        assert_eq!(updated_history.id, id);
+        assert_eq!(updated_history.command, "updated command");
+        assert_eq!(updated_history.exit_code, 1);
+    }
+
+    #[test]
+    fn test_update_unsaved_fails() {
+        let db = memory_db();
+        let history_unsaved = History::capture()
+            .timestamp(OffsetDateTime::now_utc() - Duration::from_secs(30))
+            .command("ls -l /home".to_string())
+            .cwd("/home".to_string())
+            .build();
+
+        let result = db.update(&history_unsaved.into());
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(e.msg.contains("Cannot update object with -1 ID"));
+        }
+    }
+
+    #[test]
+    fn test_search() {
+        let mut db = memory_db();
+        let h1 = History::builder()
+            .id(1)
+            .timestamp(OffsetDateTime::now_utc() - Duration::from_secs(30))
+            .command("ls -l /home".to_string())
+            .cwd("/home".to_string())
+            .exit_code(0)
+            .build();
+        let h2 = History::builder()
+            .id(2)
+            .timestamp(OffsetDateTime::now_utc() - Duration::from_secs(20))
+            .command("grep test file.txt".to_string())
+            .cwd("/tmp".to_string())
+            .exit_code(1)
+            .build();
+        let h3 = History::builder()
+            .id(3)
+            .timestamp(OffsetDateTime::now_utc() - Duration::from_secs(10))
+            .command("cargo test --all".to_string())
+            .cwd("/home/user/project".to_string())
+            .exit_code(0)
+            .build();
+
+        db.save_bulk(&[h1.clone(), h2.clone(), h3.clone()])
+            .expect("Failed to save for search");
+
+        // Search by substring
+        let results = db
+            .search("test", HistoryFilters::default())
+            .expect("Search failed");
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().any(|h| h.command == h2.command));
+        assert!(results.iter().any(|h| h.command == h3.command));
+
+        // Search by prefix (suggest)
+        let results = db
+            .search(
+                "ca",
+                HistoryFilters {
+                    suggest: true,
+                    ..Default::default()
+                },
+            )
+            .expect("Search failed");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].command, h3.command);
+
+        // Search with cwd filter
+        let results = db
+            .search(
+                "",
+                HistoryFilters {
+                    cwd: Some("/tmp".to_string()),
+                    ..Default::default()
+                },
+            )
+            .expect("Search failed");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].command, h2.command);
+
+        // Search with exit filter
+        let results = db
+            .search(
+                "",
+                HistoryFilters {
+                    exit: Some(0),
+                    ..Default::default()
+                },
+            )
+            .expect("Search failed");
+        assert_eq!(results.len(), 2); // h1 and h3
+        assert!(results.iter().any(|h| h.command == h1.command));
+        assert!(results.iter().any(|h| h.command == h3.command));
+
+        // Search with limit and order (default is DESC)
+        let results = db
+            .search(
+                "",
+                HistoryFilters {
+                    limit: Some(1),
+                    ..Default::default()
+                },
+            )
+            .expect("Search failed");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].command, h3.command); // Most recent
+    }
+
+    #[test]
+    fn test_delete() {
+        let mut db = memory_db();
+        let history = sample_history(1, "to be deleted");
+
+        let id = db.save(&history).expect("Failed to save history");
+        assert!(db.get(id).expect("Get failed").is_some());
+
+        db.delete(id).expect("Failed to delete history");
+
+        let result = db.get(id);
+        assert!(result.is_err());
+
+        // Deleting non-existent should be Ok
+        let delete_again_result = db.delete(id);
+        assert!(delete_again_result.is_ok());
+
+        // Deleting ID -1 should probably fail or be a no-op depending on desired behavior
+        // Current implementation might error in execute due to parameter mismatch if not handled
+        // Let's assume deleting -1 isn't a valid operation here or should be a no-op handled by execute
+        let delete_invalid_result = db.delete(-1);
+        // Depending on rusqlite behavior with [-1] param, this might Err or Ok(0 rows affected)
+        // Given the code `execute(&query.to_sql(), [id])`, rusqlite likely handles it.
+        // Let's assert Ok as the function intends to return Ok for 0 rows affected.
+        assert!(delete_invalid_result.is_ok());
+    }
+
+    #[test]
+    fn test_get_history_total() {
+        let mut db = memory_db();
+
+        let total_initial = db.get_history_total().expect("Failed to get initial total");
+        assert_eq!(total_initial, 0);
+
+        db.save(&sample_history(1, "cmd 1")).expect("Save 1 failed");
+        db.save(&sample_history(2, "cmd 2")).expect("Save 2 failed");
+
+        let total_after_saves = db
+            .get_history_total()
+            .expect("Failed to get total after saves");
+        assert_eq!(total_after_saves, 2);
+
+        let id = db.save(&sample_history(3, "cmd 3")).expect("Save 3 failed");
+        db.delete(id).expect("Delete failed");
+
+        let total_after_delete = db
+            .get_history_total()
+            .expect("Failed to get total after delete");
+        assert_eq!(total_after_delete, 2); // Back to 2 after deleting one
     }
 }

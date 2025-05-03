@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - *(search)* Refine layout
 - *(search)* Add scroll_padding to history list
 - *(config)* Add optional keybinding configuration
+- *(sqlite)* Implement schema migrations
 
 ### 🐛 Bug Fixes
 
