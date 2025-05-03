@@ -30,6 +30,8 @@ All notable changes to this project will be documented in this file.
 - *(ci)* Fix duplicate step name
 - *(release)* Bump version to 0.1.2
 - *(release)* Bump version to 0.1.2
+- *(release)* Update changelog for v0.1.2
+- *(release)* Update snapshots for v0.1.2 release
 
 ## [0.1.1] - 2025-04-28
 
