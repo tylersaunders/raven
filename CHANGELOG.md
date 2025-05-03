@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - *(search)* Allow shift key when typing in search input
+- *(logging)* Append to log file instead of overwriting
 
 ### 🚜 Refactor
 

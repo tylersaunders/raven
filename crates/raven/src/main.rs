@@ -12,7 +12,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LOG_FILE: &str = "raven.log";
 
 static HELP_TEMPLATE: &str = "\
-    {before-help} {name} {version}
+ kkk   {before-help} {name} {version}
     {author}
     {about}
 
@@ -49,11 +49,11 @@ fn main() {
         let _ = fs::create_dir_all(get_data_dir());
         let log_file = Box::new(
             OpenOptions::new()
-                .write(true)
+                .create(true) // Ensure the file is created if it doesn't exist
+                .append(true) // Append to the file if it exists, write otherwise
                 .open(get_data_dir().join(LOG_FILE))
-                .expect("Cannot open log file"),
+                .expect("Cannot open or create log file"),
         );
-        // Box::new(File::create(get_data_dir().join(LOG_FILE)).expect("Cannot create log file"));
         let env = Env::new().filter_or("RAVEN_LOG", "debug");
         let mut builder = Builder::from_env(env);
         builder.target(Target::Pipe(log_file));
@@ -63,8 +63,13 @@ fn main() {
     #[cfg(not(debug_assertions))]
     {
         let _ = fs::create_dir_all(get_data_dir());
-        let log_file =
-            Box::new(File::create(get_data_dir().join(LOG_FILE)).expect("Cannot create log file"));
+        let log_file = Box::new(
+            OpenOptions::new()
+                .create(true) // Ensure the file is created if it doesn't exist
+                .append(true) // Append to the file if it exists, write otherwise
+                .open(get_data_dir().join(LOG_FILE))
+                .expect("Cannot open or create log file"),
+        );
         let env = Env::new().filter_or("RAVEN_LOG", "error");
         let mut builder = Builder::from_env(env);
         builder.target(Target::Pipe(log_file));
