@@ -31,15 +31,15 @@ impl Sqlite {
     pub fn new(config: &Config) -> Self {
         let path = config
             .database
-            .database_path
-            .clone()
+            .as_ref()
+            .and_then(|config| config.database_path.clone())
             .unwrap_or(get_data_dir());
         let _ = fs::create_dir_all(&path);
 
         let file = config
             .database
-            .database_file
-            .clone()
+            .as_ref()
+            .and_then(|config| config.database_file.clone())
             .unwrap_or(String::from(DATABASE_FILE));
 
         let database_path = path.join(file);

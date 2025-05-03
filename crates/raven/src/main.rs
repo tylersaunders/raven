@@ -1,9 +1,11 @@
-use std::fs::{self, File};
+use std::fs::{self, OpenOptions};
 
 use clap::Parser;
 use command::RavenCmd;
 use env_logger::{Builder, Env, Target};
+use log::debug;
 use raven_common::utils::get_data_dir;
+use raven_database::current_context;
 mod command;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -34,7 +36,9 @@ struct Raven {
 
 impl Raven {
     fn run(self) {
-        self.raven.run();
+        let mut context = current_context();
+        debug!("context: {:?}", context.config);
+        self.raven.run(&mut context);
     }
 }
 
@@ -43,8 +47,13 @@ fn main() {
     {
         // For debug builds, write logging to a raven.log file in the data dir.
         let _ = fs::create_dir_all(get_data_dir());
-        let log_file =
-            Box::new(File::create(get_data_dir().join(LOG_FILE)).expect("Cannot create log file"));
+        let log_file = Box::new(
+            OpenOptions::new()
+                .write(true)
+                .open(get_data_dir().join(LOG_FILE))
+                .expect("Cannot open log file"),
+        );
+        // Box::new(File::create(get_data_dir().join(LOG_FILE)).expect("Cannot create log file"));
         let env = Env::new().filter_or("RAVEN_LOG", "debug");
         let mut builder = Builder::from_env(env);
         builder.target(Target::Pipe(log_file));

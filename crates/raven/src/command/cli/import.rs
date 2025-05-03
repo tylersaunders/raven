@@ -2,7 +2,7 @@ use std::env;
 
 use clap::Parser;
 use raven_database::{
-    Context, current_context,
+    Context,
     database::DatabaseError,
     history::model::History,
     import::{ImportError, Importer, LoadError, Loader, zsh::Zsh},
@@ -18,9 +18,7 @@ pub enum Cmd {
 }
 
 impl Cmd {
-    pub fn run(self) {
-        let context = current_context();
-
+    pub fn run(self, context: &mut Context) {
         match self {
             Self::Auto => {
                 let shell = env::var("SHELL").unwrap_or_else(|_| String::from("NO_SHELL"));
@@ -42,7 +40,7 @@ impl Cmd {
 /// Imports Shell history for the provided shell type.
 ///
 /// * `context`: The current raven context
-fn import<I: Importer>(context: Context) -> Result<(), ImportError> {
+fn import<I: Importer>(context: &mut Context) -> Result<(), ImportError> {
     let importer = I::new()?;
     println!("Importing history for {}", I::NAME);
     let mut loader = HistoryLoader::new(context);
@@ -52,14 +50,14 @@ fn import<I: Importer>(context: Context) -> Result<(), ImportError> {
     Ok(())
 }
 
-pub struct HistoryLoader {
+pub struct HistoryLoader<'a> {
     buf: Vec<History>,
-    context: Context,
+    context: &'a mut Context,
     count: usize,
 }
 
-impl HistoryLoader {
-    fn new(context: Context) -> Self {
+impl<'a> HistoryLoader<'a> {
+    fn new(context: &'a mut Context) -> Self {
         Self {
             buf: Vec::with_capacity(1000),
             context,
@@ -76,7 +74,7 @@ impl HistoryLoader {
     }
 }
 
-impl Loader for HistoryLoader {
+impl Loader for HistoryLoader<'_> {
     fn push(&mut self, hist: History) -> Result<(), raven_database::import::LoadError> {
         self.buf.push(hist);
         if self.buf.len() == self.buf.capacity() {

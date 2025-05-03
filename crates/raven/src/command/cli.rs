@@ -1,4 +1,5 @@
 use clap::Subcommand;
+use raven_database::Context;
 mod history;
 mod import;
 mod init;
@@ -21,20 +22,20 @@ pub enum Cmd {
 }
 
 impl Cmd {
-    pub fn run(self) {
+    pub fn run(self, context: &mut Context) {
         // CLI commands block the current thread until they resolve.
         match self {
             Self::Init(init) => {
-                init.run();
+                init.run(context);
             }
             Self::History(history) => {
-                history.run();
+                history.run(context);
             }
             Self::Search(search) => {
-                search.run();
+                search.run(context);
             }
             Self::Import(import) => {
-                import.run();
+                import.run(context);
             }
         }
     }

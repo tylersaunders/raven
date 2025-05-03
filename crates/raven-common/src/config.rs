@@ -10,7 +10,15 @@ use log::debug;
 /// Holds settings related to different parts of the application.
 #[derive(Deserialize, Debug, Default)]
 pub struct Config {
-    pub database: DatabaseConfig,
+    pub database: Option<DatabaseConfig>,
+    pub keybinds: Option<KeybindingConfig>,
+}
+
+/// Configuration related to keybindings.
+#[derive(Deserialize, Debug, Default)]
+pub struct KeybindingConfig {
+    /// Whether to skip setting up keybindings during initialization.
+    pub skip_keybinds: Option<bool>
 }
 
 /// Configuration settings specific to the database.

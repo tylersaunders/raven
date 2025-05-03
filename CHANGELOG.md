@@ -9,10 +9,15 @@ All notable changes to this project will be documented in this file.
 - *(search)* Allow deleting history entries
 - *(search)* Refine layout
 - *(search)* Add scroll_padding to history list
+- *(config)* Add optional keybinding configuration
 
 ### 🐛 Bug Fixes
 
 - *(search)* Allow shift key when typing in search input
+
+### 🚜 Refactor
+
+- *(common)* Flatten config module structure
 
 ## [0.1.1] - 2025-04-28
 

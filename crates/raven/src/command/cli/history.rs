@@ -1,7 +1,7 @@
 //! History module for storing shell history in the raven db.
 use clap::Subcommand;
 use raven_common::utils;
-use raven_database::{current_context, history::model::History};
+use raven_database::{current_context, history::model::History, Context};
 use time::OffsetDateTime;
 
 /// `History` subcommands for storing shell history in the raven db.
@@ -22,9 +22,9 @@ pub enum Cmd {
 
 impl Cmd {
     /// Runs the matching [History] subcommand.
-    pub fn run(self) {
+    pub fn run(self, context:&mut Context) {
         match self {
-            Self::Start { command } => Self::handle_start(&command),
+            Self::Start { command } => Self::handle_start(context, &command),
             Self::End { id, exit } => Self::handle_end(&id, exit),
         }
     }
@@ -33,8 +33,7 @@ impl Cmd {
     /// For ZSH, this is the preexec hook.
     ///
     /// * `command`: The shell command that is about to be run by the shell.
-    fn handle_start(command: &[String]) {
-        let mut context = current_context();
+    fn handle_start(context: &mut Context, command: &[String]) {
         let captured = History::capture()
             .cwd(utils::get_current_dir())
             .command(command.join(" "))

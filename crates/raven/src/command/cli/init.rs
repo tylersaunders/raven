@@ -1,4 +1,5 @@
 use clap::{Parser, ValueEnum};
+use raven_database::Context;
 mod zsh;
 
 #[derive(Parser, Debug)]
@@ -17,10 +18,10 @@ pub enum Shell {
 
 impl Cmd {
     /// Command runner to init raven for the selected shell.
-    pub fn run(self) {
+    pub fn run(self, context: &mut Context) {
         match self.shell {
             Shell::Zsh => {
-                zsh::init();
+                zsh::init(context);
             }
         }
     }

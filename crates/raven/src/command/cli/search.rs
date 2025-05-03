@@ -2,7 +2,7 @@ use std::io::Write;
 
 use clap::Parser;
 use log::{debug, error};
-use raven_database::{HistoryFilters, current_context, database::DatabaseError, history::model::History};
+use raven_database::{current_context, database::DatabaseError, history::model::History, Context, HistoryFilters};
 
 mod app;
 mod duration;
@@ -41,7 +41,7 @@ pub struct Cmd {
 }
 
 impl Cmd {
-    pub fn run(self) {
+    pub fn run(self, _context: &mut Context) {
         // Unwrap the query
         let query = self.query.map_or_else(
             || {
