@@ -10,10 +10,10 @@ use raven_database::{
 
 #[derive(Debug, Parser)]
 pub enum Cmd {
-    // Import history for the current shell
+    /// Import history for the current shell
     Auto,
 
-    // Import history from the zsh history file
+    /// Import history from the zsh history file
     Zsh,
 }
 

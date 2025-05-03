@@ -19,6 +19,10 @@ All notable changes to this project will be documented in this file.
 
 - *(common)* Flatten config module structure
 
+### 📚 Documentation
+
+- *(cli)* Add doc comments to subcommands
+
 ## [0.1.1] - 2025-04-28
 
 ### 🐛 Bug Fixes

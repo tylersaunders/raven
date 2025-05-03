@@ -8,16 +8,20 @@ mod search;
 #[derive(Subcommand, Debug)]
 #[command(infer_subcommands = true)]
 pub enum Cmd {
+
+    /// Add or update History in the Raven database.
     #[command(subcommand)]
     History(history::Cmd),
 
+    /// Import existing history into Raven.
     #[command(subcommand)]
     Import(import::Cmd),
 
-    /// Print Raven's shell init script
+    /// Print Raven's shell init script.
     #[command()]
     Init(init::Cmd),
 
+    /// Search the Raven history database.
     Search(search::Cmd),
 }
 
