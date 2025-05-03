@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.1.2] - 2025-05-03
 
 ### 🚀 Features
 
@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - *(ci)* Fix duplicate step name
+- *(release)* Bump version to 0.1.2
 - *(release)* Bump version to 0.1.2
 
 ## [0.1.1] - 2025-04-28
