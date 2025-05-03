@@ -25,6 +25,10 @@ All notable changes to this project will be documented in this file.
 
 - *(cli)* Add doc comments to subcommands
 
+### ⚙️ Miscellaneous Tasks
+
+- *(ci)* Fix duplicate step name
+
 ## [0.1.1] - 2025-04-28
 
 ### 🐛 Bug Fixes

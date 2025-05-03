@@ -23,7 +23,7 @@ jobs:
     - name: Build raven-common
       run: cargo build --locked --verbose --release -p raven-common
 
-    - name: Build raven-common
+    - name: Build raven-database
       run: cargo build --locked --verbose --release -p raven-database
 
     - name: Build main
