@@ -17,11 +17,21 @@ use super::{Database, DatabaseError};
 const DATABASE_FILE: &str = "raven.db";
 const LATEST_STABLE_SCHEMA: SchemaVersion = SchemaVersion::V1;
 
+const MIGRATION_V0_TO_V1: &str = include_str!("./sqlite/sql/migrate/v0_to_v1.sql");
+const MIGRATION_V1_TO_V2: &str = include_str!("./sqlite/sql/migrate/v1_to_v2.sql");
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 #[repr(u32)]
+#[allow(dead_code)] // Allow dead code so all the version enums continue to exist.
+/// Represents the different versions of the database schema.
+/// Used for migrations and ensuring compatibility.
 enum SchemaVersion {
+    /// V0: The initial state where no raven-specific schema exists.
+    V0 = 0,
+    /// V1: Introduced the `history` table for command history.
     V1 = 1,
-    // Add future versions here, e.g., V2 = 2,
+    /// V2: Introduced the `hist_fts` table for full-text search on history.
+    V2 = 2,
 }
 
 impl SchemaVersion {
@@ -325,12 +335,12 @@ impl Database for Sqlite {
     }
 }
 
-/// Get the user_version PRAGMA from the SQLite database.
+/// Get the ``user_version`` PRAGMA from the ``SQLite`` database.
 fn get_user_version(conn: &Connection) -> Result<u32, rusqlite::Error> {
     conn.query_row("PRAGMA user_version;", [], |row| row.get(0))
 }
 
-/// Set the user_version PRAGMA on the SQLite database.
+/// Set the ``user_version`` PRAGMA on the ``SQLite`` database.
 fn set_user_version(conn: &Connection, version: u32) -> Result<(), rusqlite::Error> {
     conn.execute(&format!("PRAGMA user_version = {version};"), [])?;
     Ok(())
@@ -350,14 +360,13 @@ fn get_connection(path: &str) -> Connection {
             match get_user_version(&connection) {
                 Ok(current_version) => {
                     debug!("Current database version: {current_version}");
-                    match current_version {
-                        0 => initialize_database(&connection),
-                        _ => {
-                            if current_version < LATEST_STABLE_SCHEMA.to_u32() {
-                                run_migrations(&mut connection, current_version)
-                                    .expect("Failure during migrations when opening database.");
-                            }
-                        }
+                    if current_version < LATEST_STABLE_SCHEMA.to_u32() {
+                        run_migrations(
+                            &mut connection,
+                            current_version,
+                            Some(LATEST_STABLE_SCHEMA),
+                        )
+                        .expect("Failure during migrations when opening database.");
                     }
                 }
                 Err(err) => {
@@ -373,10 +382,17 @@ fn get_connection(path: &str) -> Connection {
                 path,
                 OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE
             )) {
-                Ok(connection) => {
+                Ok(mut connection) => {
                     debug!("Created {path}");
-                    initialize_database(&connection);
-                    connection
+                    if let Err(err) = run_migrations(
+                        &mut connection,
+                        SchemaVersion::V0.to_u32(),
+                        Some(LATEST_STABLE_SCHEMA),
+                    ) {
+                        panic!("Error initializating database {err}")
+                    } else {
+                        connection
+                    }
                 }
                 Err(err) => panic!("Error opening database: {err}"),
             }
@@ -384,29 +400,16 @@ fn get_connection(path: &str) -> Connection {
     }
 }
 
-/// Sets up the expected Raven schema on the database.
-///
-/// * `conn`: Connection to the Raven database.
-fn initialize_database(conn: &Connection) {
-    debug!("initialize_database: create_history");
-    let create_history = include_str!("./sqlite/sql/create/history.sql");
-    match conn.execute(create_history, []) {
-        Ok(_) => (),
-        Err(err) => panic!("Error in initialize_database: {err}"),
-    }
-
-    // Update the pragma user_version to V1.
-    match set_user_version(conn, SchemaVersion::V1.to_u32()) {
-        Ok(()) => (),
-        Err(err) => debug!("Error setting user_version pragma {err}"),
-    }
-}
-
 /// Applies necessary schema migrations to bring the database up to the latest version.
 ///
 /// * `conn`: Connection to the Raven database.
 /// * `current_version`: The current schema version reported by the database.
-fn run_migrations(conn: &mut Connection, current_version: u32) -> Result<(), DatabaseError> {
+#[allow(clippy::single_match_else)]
+fn run_migrations(
+    conn: &mut Connection,
+    current_version: u32,
+    target_version: Option<SchemaVersion>,
+) -> Result<(), DatabaseError> {
     debug!(
         "Running migrations from version {} up to {}",
         current_version,
@@ -414,13 +417,25 @@ fn run_migrations(conn: &mut Connection, current_version: u32) -> Result<(), Dat
     );
 
     let mut version_to_migrate_from = current_version;
-    let target_version = LATEST_STABLE_SCHEMA.to_u32();
+    let target_version = match target_version {
+        Some(target) => target.to_u32(),
+        None => LATEST_STABLE_SCHEMA.to_u32(),
+    };
 
     while version_to_migrate_from < target_version {
         let next_version = version_to_migrate_from + 1;
-        let migration_script_path =
-            format!("sql/migrate/v{version_to_migrate_from}_to_v{next_version}.sql",);
-        debug!("Attempting to apply migration: {}", migration_script_path);
+
+        let migration_name = format!("v{version_to_migrate_from}_to_v{next_version}");
+        let migration_sql = match version_to_migrate_from {
+            0 => MIGRATION_V0_TO_V1,
+            1 => MIGRATION_V1_TO_V2,
+            _ => {
+                let err_msg = format!("Migration script for {migration_name} not found.");
+                error!("{err_msg}");
+                return Err(DatabaseError { msg: err_msg });
+            }
+        };
+        debug!("Attempting to apply migration: {migration_name}");
 
         let mut tx = match conn.transaction() {
             Ok(tx) => tx,
@@ -431,55 +446,33 @@ fn run_migrations(conn: &mut Connection, current_version: u32) -> Result<(), Dat
         };
         tx.set_drop_behavior(DropBehavior::Rollback); // Ensure rollback on drop if not committed
 
-        match fs::read_to_string(&migration_script_path) {
-            Ok(migration_sql) => {
-                debug!("Executing migration script:\n{}", migration_sql);
-                if let Err(e) = tx.execute_batch(&migration_sql) {
-                    error!(
-                        "Failed to execute migration script {}: {}",
-                        migration_script_path, e
-                    );
-                    // Transaction will be rolled back automatically on drop
-                    return Err(DatabaseError {
-                        msg: format!(
-                            "Migration script failed: {migration_script_path}. Error: {e}",
-                        ),
-                    });
-                }
-
-                // Update the user_version *within* the transaction
-                if let Err(e) = set_user_version(&tx, next_version) {
-                    error!(
-                        "Failed to set user_version to {} after migration {}: {}",
-                        next_version, migration_script_path, e
-                    );
-                    // Transaction will be rolled back automatically on drop
-                    return Err(e.into());
-                }
-
-                // Commit the transaction
-                if let Err(e) = tx.commit() {
-                    error!(
-                        "Failed to commit transaction after migration {}: {}",
-                        migration_script_path, e
-                    );
-                    return Err(e.into());
-                }
-                debug!("Successfully applied migration: {}", migration_script_path);
-            }
-            Err(e) => {
-                error!(
-                    "Failed to read migration script {}: {}",
-                    migration_script_path, e
-                );
-                // Transaction will be rolled back automatically on drop
-                return Err(DatabaseError {
-                    msg: format!(
-                        "Could not read migration script: {migration_script_path}. Error: {e}",
-                    ),
-                });
-            }
+        if let Err(e) = tx.execute_batch(migration_sql) {
+            error!("Failed to execute migration script {migration_name}: {e}");
+            // Transaction will be rolled back automatically on drop
+            return Err(DatabaseError {
+                msg: format!("Migration script failed: {migration_name}. Error: {e}",),
+            });
         }
+
+        // Update the user_version *within* the transaction
+        if let Err(e) = set_user_version(&tx, next_version) {
+            error!(
+                "Failed to set user_version to {} after migration {}: {}",
+                next_version, migration_name, e
+            );
+            // Transaction will be rolled back automatically on drop
+            return Err(e.into());
+        }
+
+        // Commit the transaction
+        if let Err(e) = tx.commit() {
+            error!(
+                "Failed to commit transaction after migration {}: {}",
+                migration_name, e
+            );
+            return Err(e.into());
+        }
+        debug!("Successfully applied migration: {}", migration_name);
 
         version_to_migrate_from = next_version;
     }
@@ -500,9 +493,9 @@ mod tests {
     use time::OffsetDateTime;
 
     // Helper to create an in-memory database and initialize the schema
-    fn memory_db() -> Sqlite {
-        let conn = Connection::open_in_memory().expect("Failed to open in-memory database");
-        initialize_database(&conn); // Ensure schema is created
+    fn memory_db(target_version: Option<SchemaVersion>) -> Sqlite {
+        let mut conn = Connection::open_in_memory().expect("Failed to open in-memory database");
+        let _ = run_migrations(&mut conn, SchemaVersion::V0.to_u32(), target_version);
         Sqlite { conn }
     }
 
@@ -518,8 +511,111 @@ mod tests {
     }
 
     #[test]
+    fn test_run_migrations_v0_to_latest_stable_success() {
+        // Create database with version 0.
+        let mut db = memory_db(Some(SchemaVersion::V0));
+        let initial_version = get_user_version(&db.conn).expect("Get version failed");
+        let result = run_migrations(&mut db.conn, initial_version, Some(LATEST_STABLE_SCHEMA));
+        assert!(result.is_ok(), "Migration failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_run_migrations_v1_to_latest_stable_success() {
+        // Create database with version 0.
+        let mut db = memory_db(Some(SchemaVersion::V1));
+        let initial_version = get_user_version(&db.conn).expect("Get version failed");
+        let result = run_migrations(&mut db.conn, initial_version, Some(LATEST_STABLE_SCHEMA));
+        assert!(result.is_ok(), "Migration failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_run_migrations_v1_to_v2_success() {
+        // 1. Setup: Create DB, which initializes to V1 schema and version 1.
+        let mut db = memory_db(Some(SchemaVersion::V1));
+        let initial_version = get_user_version(&db.conn).expect("Get version failed");
+        assert_eq!(initial_version, SchemaVersion::V1.to_u32());
+
+        // Checks if the `history_fts` virtual table exists in the ``SQLite`` database.
+        let get_history_fts_exists = |conn: &Connection| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM sqlite_master where type = 'table' AND name = 'history_fts'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .is_ok_and(|count| count == 1)
+        };
+
+        // Checks if the `history` table triggers exists in the ``SQLite`` database.
+        let get_history_triggers_exist = |conn: &Connection| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM sqlite_master where type = 'trigger' AND tbl_name = 'history'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            // The correct number is 3 triggers (insert/update/delete)
+            .is_ok_and(|count| count == 3)
+        };
+
+        // Verify the history_fts table and associated triggers don't exist before migration.
+        assert!(
+            !get_history_fts_exists(&db.conn),
+            "history_fts should not exist in V1 schema"
+        );
+        assert!(
+            !get_history_triggers_exist(&db.conn),
+            "history_triggers should not exist in V1 schema"
+        );
+
+        // 2. Act: Run migrations starting from the initial version.
+        let result = run_migrations(&mut db.conn, initial_version, Some(SchemaVersion::V2));
+
+        // 3. Assert: Check result, version update, and schema change.
+        assert!(result.is_ok(), "Migration failed: {:?}", result.err());
+        assert_eq!(
+            get_user_version(&db.conn).expect("Get version failed"),
+            SchemaVersion::V2.to_u32(),
+            "Database version should be updated to V2"
+        );
+
+        // Verify the schema change occurred.
+        assert!(
+            get_history_fts_exists(&db.conn),
+            "history_fts should exist in Schema v2."
+        );
+        assert!(
+            get_history_triggers_exist(&db.conn),
+            "history_triggers should exist in V2 schema"
+        );
+    }
+
+    #[test]
+    fn test_run_migrations_no_migration_needed() {
+        // 1. Setup: Create DB (V1 schema/version 1), then manually set to V2.
+        let mut db = memory_db(Some(SchemaVersion::V1));
+        set_user_version(&db.conn, SchemaVersion::V2.to_u32())
+            .expect("Failed to set version to latest");
+        let initial_version = get_user_version(&db.conn).expect("Get version failed");
+        assert_eq!(initial_version, LATEST_STABLE_SCHEMA.to_u32());
+
+        // 2. Act: Run migrations starting from the current (latest) version.
+        let result = run_migrations(&mut db.conn, initial_version, Some(SchemaVersion::V2));
+
+        // 3. Assert: Should succeed, version remains unchanged.
+        assert!(
+            result.is_ok(),
+            "Migration failed unexpectedly: {:?}",
+            result.err()
+        );
+        assert_eq!(
+            get_user_version(&db.conn).expect("Get version failed"),
+            LATEST_STABLE_SCHEMA.to_u32(),
+            "Database version should remain unchanged"
+        );
+    }
+
+    #[test]
     fn test_save_and_get() {
-        let mut db = memory_db();
+        let mut db = memory_db(Some(LATEST_STABLE_SCHEMA));
         let history_in = sample_history(1, "echo test");
 
         let id = db.save(&history_in).expect("Failed to save history");
@@ -543,7 +639,7 @@ mod tests {
 
     #[test]
     fn test_save_bulk() {
-        let mut db = memory_db();
+        let mut db = memory_db(Some(LATEST_STABLE_SCHEMA));
         let histories = vec![
             sample_history(1, "echo 1"),
             sample_history(2, "echo 2"),
@@ -562,7 +658,7 @@ mod tests {
 
     #[test]
     fn test_update() {
-        let mut db = memory_db();
+        let mut db = memory_db(Some(LATEST_STABLE_SCHEMA));
         let mut history = sample_history(1, "initial command");
 
         let id = db.save(&history).expect("Failed to save history");
@@ -584,7 +680,7 @@ mod tests {
 
     #[test]
     fn test_update_unsaved_fails() {
-        let db = memory_db();
+        let db = memory_db(Some(LATEST_STABLE_SCHEMA));
         let history_unsaved = History::capture()
             .timestamp(OffsetDateTime::now_utc() - Duration::from_secs(30))
             .command("ls -l /home".to_string())
@@ -600,7 +696,7 @@ mod tests {
 
     #[test]
     fn test_search() {
-        let mut db = memory_db();
+        let mut db = memory_db(Some(LATEST_STABLE_SCHEMA));
         let h1 = History::builder()
             .id(1)
             .timestamp(OffsetDateTime::now_utc() - Duration::from_secs(30))
@@ -690,7 +786,7 @@ mod tests {
 
     #[test]
     fn test_delete() {
-        let mut db = memory_db();
+        let mut db = memory_db(Some(LATEST_STABLE_SCHEMA));
         let history = sample_history(1, "to be deleted");
 
         let id = db.save(&history).expect("Failed to save history");
@@ -717,7 +813,7 @@ mod tests {
 
     #[test]
     fn test_get_history_total() {
-        let mut db = memory_db();
+        let mut db = memory_db(Some(LATEST_STABLE_SCHEMA));
 
         let total_initial = db.get_history_total().expect("Failed to get initial total");
         assert_eq!(total_initial, 0);

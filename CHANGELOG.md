@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### 🚀 Features
+
+- *(sqlite)* Add schema migrations and full-text search support
+
 ## [0.1.2] - 2025-05-03
 
 ### 🚀 Features
