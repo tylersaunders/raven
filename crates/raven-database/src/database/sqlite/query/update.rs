@@ -47,7 +47,6 @@ impl SqlString for UpdateStatement<'_> {
 }
 
 impl<'a> UpdateStatement<'a> {
-
     /// Construct a new [`UpdateStatement`]
     pub fn new() -> Self {
         Self::default()

@@ -18,7 +18,7 @@ pub struct Config {
 #[derive(Deserialize, Debug, Default)]
 pub struct KeybindingConfig {
     /// Whether to skip setting up keybindings during initialization.
-    pub skip_keybinds: Option<bool>
+    pub skip_keybinds: Option<bool>,
 }
 
 /// Configuration settings specific to the database.

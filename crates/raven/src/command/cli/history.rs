@@ -1,7 +1,7 @@
 //! History module for storing shell history in the raven db.
 use clap::Subcommand;
 use raven_common::utils;
-use raven_database::{current_context, history::model::History, Context};
+use raven_database::{Context, current_context, history::model::History};
 use time::OffsetDateTime;
 
 /// `History` subcommands for storing shell history in the raven db.
@@ -22,7 +22,7 @@ pub enum Cmd {
 
 impl Cmd {
     /// Runs the matching [History] subcommand.
-    pub fn run(self, context:&mut Context) {
+    pub fn run(self, context: &mut Context) {
         match self {
             Self::Start { command } => Self::handle_start(context, &command),
             Self::End { id, exit } => Self::handle_end(&id, exit),

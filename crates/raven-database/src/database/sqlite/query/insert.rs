@@ -25,7 +25,6 @@ impl SqlString for InsertStatement<'_> {
 }
 
 impl<'a> InsertStatement<'a> {
-
     /// Construct a new [`InsertStatement`]
     pub fn new() -> Self {
         Self::default()

@@ -8,7 +8,6 @@ mod search;
 #[derive(Subcommand, Debug)]
 #[command(infer_subcommands = true)]
 pub enum Cmd {
-
     /// Add or update History in the Raven database.
     #[command(subcommand)]
     History(history::Cmd),

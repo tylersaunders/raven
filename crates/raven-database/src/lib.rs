@@ -1,5 +1,8 @@
 use database::{Database, sqlite::Sqlite};
-use raven_common::{config::{load_config, Config}, utils};
+use raven_common::{
+    config::{Config, load_config},
+    utils,
+};
 
 pub mod database;
 pub mod history;
@@ -33,6 +36,6 @@ pub fn current_context() -> Context {
     Context {
         cwd,
         db: Box::new(Sqlite::new(&config)),
-        config
+        config,
     }
 }

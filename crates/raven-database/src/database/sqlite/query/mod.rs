@@ -3,10 +3,10 @@ use insert::InsertStatement;
 use select::SelectStatement;
 use update::UpdateStatement;
 
+mod delete;
 mod insert;
 mod select;
 mod update;
-mod delete;
 
 #[derive(Debug, Clone)]
 /// Shorthand for constructing any table query

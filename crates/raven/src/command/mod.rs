@@ -11,7 +11,7 @@ pub enum RavenCmd {
 }
 
 impl RavenCmd {
-    pub fn run(self, context:&mut Context) {
+    pub fn run(self, context: &mut Context) {
         match self {
             Self::Cli(cli) => cli.run(context),
         }

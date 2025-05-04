@@ -2,7 +2,9 @@ use std::io::Write;
 
 use clap::Parser;
 use log::{debug, error};
-use raven_database::{current_context, database::DatabaseError, history::model::History, Context, HistoryFilters};
+use raven_database::{
+    Context, HistoryFilters, current_context, database::DatabaseError, history::model::History,
+};
 
 mod app;
 mod duration;
@@ -93,7 +95,10 @@ impl Cmd {
 }
 
 /// Run a `query` against the raven database and return the first result.
-fn run_non_interactive(query: &[String], filters: HistoryFilters) -> Result<Vec<History>, DatabaseError> {
+fn run_non_interactive(
+    query: &[String],
+    filters: HistoryFilters,
+) -> Result<Vec<History>, DatabaseError> {
     let context = current_context();
     context.db.search(query.join(" ").as_str(), filters)
 }

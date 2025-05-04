@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::{history::model::History, HistoryFilters};
+use crate::{HistoryFilters, history::model::History};
 pub mod sqlite;
 
 #[derive(Debug, Clone)]
@@ -51,7 +51,6 @@ pub trait Database {
     /// # Errors
     /// Will return `Err` if the database Encountered an issue.
     fn update(&self, history: &History) -> Result<(), DatabaseError>;
-
 
     /// Delete a history entry by its unique ID.
     ///

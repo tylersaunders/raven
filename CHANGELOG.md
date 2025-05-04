@@ -16,6 +16,10 @@ All notable changes to this project will be documented in this file.
 
 - *(sqlite)* Enhance SQLite methods, error handling, and docs
 
+### ⚙️ Miscellaneous Tasks
+
+- Run cargo fmt and apply fixes
+
 ## [0.1.2] - 2025-05-03
 
 ### 🚀 Features

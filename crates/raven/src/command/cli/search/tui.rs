@@ -1,4 +1,4 @@
-use super::app::{SearchApp, AppResult, AppState};
+use super::app::{AppResult, AppState, SearchApp};
 use super::event::EventHandler;
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
@@ -41,7 +41,7 @@ impl<B: Backend> Tui<B> {
     /// [`rendering`]: crate::ui:render
     pub fn draw(&mut self, app: &mut SearchApp, app_state: &mut AppState) -> AppResult<()> {
         self.terminal.draw(|frame| {
-            frame.render_stateful_widget_ref( app, frame.area(),  app_state);
+            frame.render_stateful_widget_ref(app, frame.area(), app_state);
             frame.set_cursor_position(app_state.cusor_position);
         })?;
         Ok(())

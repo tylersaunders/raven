@@ -39,9 +39,7 @@ pub fn get_data_dir() -> PathBuf {
 /// Defaults to `$XDG_CONFIG_HOME` or `$HOME/.config/raven` if `$XDG_CONFIG_HOME` cannot be found.
 #[must_use]
 pub fn get_config_dir() -> PathBuf {
-    let data_dir = std::env::var("XDG_CONFIG_HOME").map_or_else(
-        |_| get_home_dir().join(".config"),
-        PathBuf::from,
-    );
+    let data_dir = std::env::var("XDG_CONFIG_HOME")
+        .map_or_else(|_| get_home_dir().join(".config"), PathBuf::from);
     data_dir.join("raven")
 }

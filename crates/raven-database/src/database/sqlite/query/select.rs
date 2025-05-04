@@ -1,6 +1,5 @@
 use super::SqlString;
 
-
 /// Select rows from an existing table
 #[derive(Default, Debug, Clone)]
 pub struct SelectStatement<'a> {
@@ -76,7 +75,6 @@ impl SqlString for SelectStatement<'_> {
 }
 
 impl<'a> SelectStatement<'a> {
-
     /// Construct a new [`SelectStatement`]
     pub fn new() -> Self {
         Self::default()
@@ -162,7 +160,4 @@ fn test_to_sql() {
             "ORDER BY timestamp DESC LIMIT 100 ",
         ))
     );
-
-
-
 }
