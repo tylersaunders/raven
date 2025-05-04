@@ -35,6 +35,7 @@ enum SchemaVersion {
 }
 
 impl SchemaVersion {
+    /// Converts the `SchemaVersion` enum variant to its underlying `u32` representation.
     fn to_u32(self) -> u32 {
         self as u32
     }
@@ -48,9 +49,16 @@ pub struct Sqlite {
 impl Sqlite {
     /// Creates a new [`Sqlite`].
     ///
+    /// Uses the configuration provided to determine the database path and file.
+    /// If not specified in the config, it defaults to a standard data directory
+    /// and a file named "database.sqlite3".
+    ///
     /// # Panics
     ///
-    /// Panics if a data directory for the database file cannot be found.
+    /// Panics if:
+    /// - A suitable data directory for the database file cannot be found or created.
+    /// - The generated database file path is not valid UTF-8.
+    /// - The database connection cannot be established.
     #[must_use]
     pub fn new(config: &Config) -> Self {
         let path = config
@@ -76,13 +84,24 @@ impl Sqlite {
     }
 }
 
+/// Provides a default `Sqlite` instance.
+///
+/// Loads the application configuration and uses it to initialize the database connection.
+///
+/// # Panics
+///
+/// Panics if the configuration cannot be loaded. See [`load_config`] for details.
+/// Panics if the `Sqlite::new` method panics. See [`Sqlite::new`] for details.
 impl Default for Sqlite {
     fn default() -> Self {
         Self::new(&load_config().expect("Failed to load config"))
     }
 }
 
-// From rusqlite errors to Raven's internal DatabaseError type.
+/// Converts a [`rusqlite::Error`] into a [`DatabaseError`].
+///
+/// This allows for easy error handling by converting the specific `SQLite` error
+/// into a more general database error type used within the application.
 impl From<rusqlite::Error> for DatabaseError {
     fn from(value: rusqlite::Error) -> Self {
         Self {
@@ -91,7 +110,20 @@ impl From<rusqlite::Error> for DatabaseError {
     }
 }
 
+/// Implementation of the `Database` trait for the `Sqlite` backend.
+///
+/// This implementation uses `rusqlite` to interact with an `SQLite` database file.
 impl Database for Sqlite {
+    /// Saves a single `History` entry to the database.
+    ///
+    /// # Arguments
+    ///
+    /// * `history` - A reference to the `History` entry to save.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(i64)` - The row ID of the newly inserted entry.
+    /// * `Err(DatabaseError)` - If there was an error during the database operation.
     fn save(&mut self, history: &History) -> Result<i64, DatabaseError> {
         let query = Query::insert()
             .column("timestamp")
@@ -111,6 +143,17 @@ impl Database for Sqlite {
         Ok(result?)
     }
 
+    /// Saves multiple `History` entries to the database efficiently using a transaction.
+    ///
+    /// # Arguments
+    ///
+    /// * `history` - A slice of `History` entries to save.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<i64>)` - A vector containing the row IDs of the newly inserted entries.
+    /// * `Err(DatabaseError)` - If there was an error during the database operation.
+    ///   The transaction will be rolled back in case of an error.
     fn save_bulk(&mut self, history: &[History]) -> Result<Vec<i64>, DatabaseError> {
         let mut row_ids: Vec<i64> = Vec::new();
 
@@ -134,15 +177,27 @@ impl Database for Sqlite {
             }) {
                 Ok(row_id) => row_ids.push(row_id),
                 Err(err) => {
+                    // Transaction is automatically rolled back due to DropBehavior::Rollback
                     return Err(err.into());
                 }
             }
         }
-        drop(stmt);
-        let _ = tx.commit();
+        drop(stmt); // Explicitly drop statement before committing transaction
+        tx.commit()?; // Commit the transaction
         Ok(row_ids)
     }
 
+    /// Retrieves a single `History` entry from the database by its ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The ID of the history entry to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(History))` - If an entry with the given ID was found.
+    /// * `Ok(None)` - If no entry with the given ID was found.
+    /// * `Err(DatabaseError)` - If there was an error during the database operation.
     fn get(&self, id: i64) -> Result<Option<History>, DatabaseError> {
         let query = Query::select()
             .column("id")
@@ -154,10 +209,7 @@ impl Database for Sqlite {
             .r#where("id")
             .to_owned();
 
-        let mut stmt = self
-            .conn
-            // .prepare("SELECT id, command, cwd, exit_code, timestamp FROM history WHERE id=?1")?;
-            .prepare(query.to_sql().as_str())?;
+        let mut stmt = self.conn.prepare(query.to_sql().as_str())?;
 
         let h = stmt.query_row([id], |row| {
             Ok(History::builder()
@@ -174,10 +226,23 @@ impl Database for Sqlite {
 
         match h {
             Ok(h) => Ok(Some(h)),
-            Err(e) => Err(e.into()),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None), // Handle not found case
+            Err(e) => Err(e.into()),                               // Handle other errors
         }
     }
 
+    /// Updates an existing `History` entry in the database.
+    ///
+    /// The `History` entry must have a valid ID (not -1).
+    ///
+    /// # Arguments
+    ///
+    /// * `history` - A reference to the `History` entry containing the updated data and the ID.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - If the update was successful.
+    /// * `Err(DatabaseError)` - If the history ID is invalid or if there was a database error.
     fn update(&self, history: &History) -> Result<(), DatabaseError> {
         if history.id == -1 {
             return Err(DatabaseError {
@@ -201,14 +266,18 @@ impl Database for Sqlite {
             ":cwd": history.cwd,
             ":exit_code": history.exit_code,
             ":timestamp": history.timestamp.unix_timestamp(),
-            ":w_id": history.id,
+            ":w_id": history.id, // Parameter name must match the `where` clause in the SQL
         }) {
             Ok(rows) => {
                 if rows == 1 {
                     Ok(())
                 } else {
+                    // Can happen if the ID doesn't exist
                     Err(DatabaseError {
-                        msg: String::from("Unexpected row count for single row update."),
+                        msg: format!(
+                            "Update affected {rows} rows, expected 1 for ID {}",
+                            history.id
+                        ),
                     })
                 }
             }
@@ -216,10 +285,23 @@ impl Database for Sqlite {
         }
     }
 
+    /// Searches for `History` entries based on a query string and filters.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The search string to match against the `command` field.
+    /// * `filters` - A `HistoryFilters` struct containing additional filtering criteria (limit, exit code, cwd, suggest mode).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<History>)` - A vector of matching `History` entries, ordered by timestamp descending.
+    /// * `Err(DatabaseError)` - If there was an error during the database operation.
     fn search(&self, query: &str, filters: HistoryFilters) -> Result<Vec<History>, DatabaseError> {
-        debug!("search with query: {query}");
+        debug!("search with query: {query}, filters: {:?}", filters);
 
-        let mut params: Vec<(&str, &dyn ToSql)> = Vec::new();
+        // Use Vec<(String, Box<dyn ToSql>)> to hold parameters with owned names
+        let mut params_map: std::collections::HashMap<String, Box<dyn ToSql>> =
+            std::collections::HashMap::new();
 
         let mut sql_query = Query::select()
             .column("id")
@@ -235,19 +317,18 @@ impl Database for Sqlite {
             sql_query.limit(limit);
         }
 
-        let exit = filters.exit.as_ref();
-        if exit.is_some() {
+        if let Some(exit) = filters.exit {
             sql_query.r#where("exit_code");
-            params.push((":exit_code", &exit));
+            params_map.insert(":exit_code".to_string(), Box::new(exit));
         }
 
-        let cwd = filters.cwd.as_ref();
-        if cwd.is_some() {
+        if let Some(cwd) = filters.cwd.as_ref() {
+            // Borrow cwd for the map
             sql_query.r#where("cwd");
-            params.push((":cwd", &cwd));
+            params_map.insert(":cwd".to_string(), Box::new(cwd.clone())); // Clone into Box
         }
 
-        let q = if query.is_empty() {
+        let q_owned = if query.is_empty() {
             None
         } else if filters.suggest {
             // For suggestions, use QUERY as a prefix
@@ -257,14 +338,24 @@ impl Database for Sqlite {
             Some(format!("%{query}%"))
         };
 
-        if q.is_some() {
+        if let Some(ref q) = q_owned {
+            // Borrow q_owned for the map
             sql_query.like("command");
-            params.push((":command", &q));
+            params_map.insert(":command".to_string(), Box::new(q.clone())); // Clone into Box
         }
+
+        // Convert HashMap to Vec<(&str, &dyn ToSql)> required by query_map
+        // Note: The lifetime of the String keys in the map needs careful handling.
+        // It's often easier to use `named_params!` macro if possible, or manage lifetimes explicitly.
+        // For simplicity here, we'll build named parameters directly.
+        let named_params_vec: Vec<(&str, &dyn ToSql)> = params_map
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_ref()))
+            .collect();
 
         let mut stmt = self.conn.prepare(sql_query.to_sql().as_str())?;
 
-        match stmt.query_map(&*params, |row| {
+        match stmt.query_map(&*named_params_vec, |row| {
             Ok(History::builder()
                 .id(row.get("id")?)
                 .command(row.get("command")?)
@@ -274,45 +365,46 @@ impl Database for Sqlite {
                 .build())
         }) {
             Ok(rows) => {
-                let mut results: Vec<History> = Vec::new();
-                for row in rows {
-                    results.push(row.unwrap());
-                }
-                Ok(results)
+                // Collect results, handling potential errors during row processing
+                rows.collect::<Result<Vec<History>, rusqlite::Error>>()
+                    .map_err(DatabaseError::from)
             }
             Err(e) => Err(e.into()),
         }
     }
 
+    /// Deletes a `History` entry from the database by its ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The ID of the history entry to delete.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - If the deletion was successful or if the entry did not exist.
+    /// * `Err(DatabaseError)` - If there was an unexpected database error.
     fn delete(&self, id: i64) -> Result<(), DatabaseError> {
         debug!("Deleting history entry with id: {}", id);
         let query = Query::delete().table("history").r#where("id").to_owned();
 
         match self.conn.execute(&query.to_sql(), [id]) {
             Ok(rows_affected) => {
-                if rows_affected == 1 {
-                    debug!("Successfully deleted history entry with id: {}", id);
-                    Ok(())
-                } else if rows_affected == 0 {
-                    // It's not necessarily an error if the ID didn't exist,
-                    // but we can log it or return a specific error if needed.
+                if rows_affected <= 1 {
+                    // 0 or 1 row affected is considered success
                     debug!(
-                        "Attempted to delete non-existent history entry with id: {}",
-                        id
+                        "Deletion attempt for id {} resulted in {} rows affected.",
+                        id, rows_affected
                     );
-                    // Return Ok(()) as the state is "entry with id does not exist", which is the goal.
-                    // Alternatively, return an error:
-                    // Err(DatabaseError { msg: format!("History entry with id {} not found for deletion", id) })
                     Ok(())
                 } else {
-                    // This shouldn't happen with a primary key constraint
+                    // This case should ideally not happen with a primary key `id`
                     error!(
                         "Unexpected number of rows ({}) affected when deleting history entry with id: {}",
                         rows_affected, id
                     );
                     Err(DatabaseError {
                         msg: format!(
-                            "Unexpected number of rows ({rows_affected}) affected during deletion",
+                            "Unexpected number of rows ({rows_affected}) affected during deletion for id {id}",
                         ),
                     })
                 }
@@ -324,14 +416,20 @@ impl Database for Sqlite {
         }
     }
 
+    /// Gets the total number of history entries in the database.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(i64)` - The total count of history entries.
+    /// * `Err(DatabaseError)` - If there was an error during the database operation.
     fn get_history_total(&self) -> Result<i64, DatabaseError> {
         let query = Query::select()
             .count("*", "count")
             .from("history")
             .to_owned();
         let mut stmt = self.conn.prepare(query.to_sql().as_str())?;
-        let rows = stmt.query_row([], |row| row.get::<&str, i64>("count"));
-        Ok(rows?)
+        let count = stmt.query_row([], |row| row.get::<usize, i64>(0)); // Get count by index
+        Ok(count?)
     }
 }
 
@@ -792,7 +890,9 @@ mod tests {
         db.delete(id).expect("Failed to delete history");
 
         let result = db.get(id);
-        assert!(result.is_err());
+        assert!(result.is_ok());
+        // The result should be None
+        assert!(result.unwrap().is_none());
 
         // Deleting non-existent should be Ok
         let delete_again_result = db.delete(id);
