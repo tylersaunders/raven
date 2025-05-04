@@ -590,15 +590,12 @@ mod tests {
 
     #[test]
     fn test_run_migrations_no_migration_needed() {
-        // 1. Setup: Create DB (V1 schema/version 1), then manually set to V2.
-        let mut db = memory_db(Some(SchemaVersion::V1));
-        set_user_version(&db.conn, SchemaVersion::V2.to_u32())
-            .expect("Failed to set version to latest");
+        let mut db = memory_db(Some(LATEST_STABLE_SCHEMA));
         let initial_version = get_user_version(&db.conn).expect("Get version failed");
         assert_eq!(initial_version, LATEST_STABLE_SCHEMA.to_u32());
 
         // 2. Act: Run migrations starting from the current (latest) version.
-        let result = run_migrations(&mut db.conn, initial_version, Some(SchemaVersion::V2));
+        let result = run_migrations(&mut db.conn, initial_version, Some(LATEST_STABLE_SCHEMA));
 
         // 3. Assert: Should succeed, version remains unchanged.
         assert!(
