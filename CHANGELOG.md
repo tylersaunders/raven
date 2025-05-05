@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.1.3] - 2025-05-05
 
 ### 🚀 Features
 
@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Run cargo fmt and apply fixes
+- *(release)* Bump version to 0.1.3
 
 ## [0.1.2] - 2025-05-03
 
