@@ -1,4 +1,5 @@
 use super::SqlString;
+use std::fmt::Write as _;
 
 /// Update existing rows in the table
 #[derive(Default, Debug, Clone)]
@@ -12,11 +13,11 @@ impl SqlString for UpdateStatement<'_> {
     /// Convert the [`UpdateStatement`] into a runnable SQL string.
     fn to_sql(&self) -> String {
         let mut sql = String::new();
-        sql.push_str(&format!("UPDATE {} SET", self.table));
+        let _ = write!(sql, "UPDATE {} SET", self.table);
 
         for (idx, &col) in self.columns.iter().enumerate() {
             sql.push(' ');
-            sql.push_str(&format!("{col} = :{col}"));
+            let _ = write!(sql, "{col} = :{col}");
 
             if idx < self.columns.len() - 1 {
                 sql.push(',');
@@ -36,9 +37,9 @@ impl SqlString for UpdateStatement<'_> {
                 }
 
                 if let Some(like) = option {
-                    sql.push_str(&format!("{clause} {like} :w_{clause}"));
+                    let _ = write!(sql, "{clause} {like} :w_{clause}");
                 } else {
-                    sql.push_str(&format!("{clause} = :w_{clause}"));
+                    let _ = write!(sql, "{clause} = :w_{clause}");
                 }
             }
         }
@@ -74,19 +75,24 @@ impl<'a> UpdateStatement<'a> {
     }
 }
 
-#[test]
-fn test_to_sql() {
-    let query = super::Query::update()
-        .table("history")
-        .column("command")
-        .column("cwd")
-        .r#where("id")
-        .to_owned();
+#[cfg(test)]
+mod tests {
+    use crate::database::sqlite::{Query, query::SqlString};
 
-    assert_eq!(
-        query.to_sql(),
-        String::from(concat!(
-            "UPDATE history SET command = :command, cwd = :cwd WHERE id = :w_id",
-        ))
-    );
+    #[test]
+    fn test_to_sql() {
+        let query = Query::update()
+            .table("history")
+            .column("command")
+            .column("cwd")
+            .r#where("id")
+            .to_owned();
+
+        assert_eq!(
+            query.to_sql(),
+            String::from(concat!(
+                "UPDATE history SET command = :command, cwd = :cwd WHERE id = :w_id",
+            ))
+        );
+    }
 }

@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### 🚀 Features
 
 - *(sqlite)* Add schema migrations and full-text search support
+- *(database)* Implement full-text search for history
 
 ### 🐛 Bug Fixes
 

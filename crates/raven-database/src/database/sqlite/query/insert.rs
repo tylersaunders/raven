@@ -1,4 +1,5 @@
 use super::SqlString;
+use std::fmt::Write as _;
 
 /// Insert any new rows into an existing table
 #[derive(Default, Debug, Clone)]
@@ -10,7 +11,8 @@ pub struct InsertStatement<'a> {
 impl SqlString for InsertStatement<'_> {
     fn to_sql(&self) -> String {
         let mut sql = String::new();
-        sql.push_str(&format!(
+        let _ = write!(
+            sql,
             "INSERT INTO {} ({}) VALUES ({})",
             self.table,
             self.columns.join(", "),
@@ -19,7 +21,8 @@ impl SqlString for InsertStatement<'_> {
                 .map(|col| format!(":{col}"))
                 .collect::<Vec<String>>()
                 .join(", ")
-        ));
+        );
+
         sql
     }
 }
@@ -43,18 +46,22 @@ impl<'a> InsertStatement<'a> {
     }
 }
 
-#[test]
-fn test_to_sql() {
-    let query = super::Query::insert()
-        .table("history")
-        .column("command")
-        .column("cwd")
-        .to_owned();
+#[cfg(test)]
+mod tests {
+    use crate::database::sqlite::{Query, query::SqlString};
+    #[test]
+    fn test_to_sql() {
+        let query = Query::insert()
+            .table("history")
+            .column("command")
+            .column("cwd")
+            .to_owned();
 
-    assert_eq!(
-        query.to_sql(),
-        String::from(concat!(
-            "INSERT INTO history (command, cwd) VALUES (:command, :cwd)"
-        ))
-    );
+        assert_eq!(
+            query.to_sql(),
+            String::from(concat!(
+                "INSERT INTO history (command, cwd) VALUES (:command, :cwd)"
+            ))
+        );
+    }
 }

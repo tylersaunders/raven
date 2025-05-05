@@ -7,7 +7,7 @@ use raven_common::{
     config::{Config, load_config},
     utils::get_data_dir,
 };
-use rusqlite::{Connection, DropBehavior, OpenFlags, ToSql, named_params};
+use rusqlite::{Connection, DropBehavior, OpenFlags, ToSql, named_params, types::ToSqlOutput};
 use time::OffsetDateTime;
 
 use crate::{HistoryFilters, history::model::History};
@@ -15,10 +15,11 @@ use crate::{HistoryFilters, history::model::History};
 use super::{Database, DatabaseError};
 
 const DATABASE_FILE: &str = "raven.db";
-const LATEST_STABLE_SCHEMA: SchemaVersion = SchemaVersion::V1;
+const LATEST_STABLE_SCHEMA: SchemaVersion = SchemaVersion::V3;
 
 const MIGRATION_V0_TO_V1: &str = include_str!("./sqlite/sql/migrate/v0_to_v1.sql");
 const MIGRATION_V1_TO_V2: &str = include_str!("./sqlite/sql/migrate/v1_to_v2.sql");
+const MIGRATION_V2_TO_V3: &str = include_str!("./sqlite/sql/migrate/v2_to_v3.sql");
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 #[repr(u32)]
@@ -32,6 +33,8 @@ enum SchemaVersion {
     V1 = 1,
     /// V2: Introduced the `hist_fts` table for full-text search on history.
     V2 = 2,
+    /// V3: Introduced the `hist_fts` table for full-text search on history.
+    V3 = 3,
 }
 
 impl SchemaVersion {
@@ -297,63 +300,77 @@ impl Database for Sqlite {
     /// * `Ok(Vec<History>)` - A vector of matching `History` entries, ordered by timestamp descending.
     /// * `Err(DatabaseError)` - If there was an error during the database operation.
     fn search(&self, query: &str, filters: HistoryFilters) -> Result<Vec<History>, DatabaseError> {
-        debug!("search with query: {query}, filters: {:?}", filters);
+        debug!("search with query: '{}', filters: {:?}", query, filters);
 
-        // Use Vec<(String, Box<dyn ToSql>)> to hold parameters with owned names
         let mut params_map: std::collections::HashMap<String, Box<dyn ToSql>> =
             std::collections::HashMap::new();
 
         let mut sql_query = Query::select()
-            .column("id")
-            .column("command")
-            .column("cwd")
-            .column("exit_code")
-            .column("timestamp")
-            .from("history")
+            .column("h.id") // No alias needed
+            .column("h.command")
+            .column("h.cwd")
+            .column("h.exit_code")
+            .column("h.timestamp")
+            .from("history h")
+            // Order by timestamp when not using FTS relevance
             .orderby("timestamp", "DESC")
             .to_owned();
 
+        if !query.is_empty() {
+            // Reset the from table to use history_fts and join on history.
+            sql_query.from.clear();
+            sql_query
+                .from("history_fts fts JOIN history h ON h.id = fts.rowid")
+                .match_fts("fts.command")
+                .orderby("rank", "ASC");
+
+            // Split by whitespace breaks, and tokenize each individual word.
+            let words: Vec<&str> = query.split_whitespace().collect();
+
+            let tokens: Vec<String> = words
+                .into_iter()
+                .map(|word| format!("\"{word}\"*"))
+                .collect();
+
+            // Add the search tokens to the query parameters.
+            params_map.insert(":fts_command".to_string(), Box::new(tokens.join(" ")));
+        }
+
+        if let Some(exit) = filters.exit {
+            let param_name = ":h_exit_code"; // Need distinct param name
+            sql_query.r#where("h.exit_code"); // WHERE h.exit_code = :h_exit_code
+            params_map.insert(param_name.to_string(), Box::new(exit));
+        }
+
+        if let Some(cwd) = filters.cwd.as_ref() {
+            let param_name = ":h_cwd"; // Need distinct param name
+            sql_query.r#where("h.cwd"); // WHERE h.cwd = :h_cwd
+            params_map.insert(param_name.to_string(), Box::new(cwd.clone()));
+        }
+
+        // Apply limit regardless of path
         if let Some(limit) = filters.limit {
             sql_query.limit(limit);
         }
 
-        if let Some(exit) = filters.exit {
-            sql_query.r#where("exit_code");
-            params_map.insert(":exit_code".to_string(), Box::new(exit));
-        }
-
-        if let Some(cwd) = filters.cwd.as_ref() {
-            // Borrow cwd for the map
-            sql_query.r#where("cwd");
-            params_map.insert(":cwd".to_string(), Box::new(cwd.clone())); // Clone into Box
-        }
-
-        let q_owned = if query.is_empty() {
-            None
-        } else if filters.suggest {
-            // For suggestions, use QUERY as a prefix
-            Some(format!("{query}%"))
-        } else {
-            // All other searches should treat QUERY as a substring
-            Some(format!("%{query}%"))
-        };
-
-        if let Some(ref q) = q_owned {
-            // Borrow q_owned for the map
-            sql_query.like("command");
-            params_map.insert(":command".to_string(), Box::new(q.clone())); // Clone into Box
-        }
-
-        // Convert HashMap to Vec<(&str, &dyn ToSql)> required by query_map
-        // Note: The lifetime of the String keys in the map needs careful handling.
-        // It's often easier to use `named_params!` macro if possible, or manage lifetimes explicitly.
-        // For simplicity here, we'll build named parameters directly.
+        // Parameter Vec preparation, convert the hashmap into a tuple Vec.
         let named_params_vec: Vec<(&str, &dyn ToSql)> = params_map
             .iter()
             .map(|(k, v)| (k.as_str(), v.as_ref()))
             .collect();
 
-        let mut stmt = self.conn.prepare(sql_query.to_sql().as_str())?;
+        #[cfg(debug_assertions)]
+        {
+            // Increased logging for dev binaries.
+            let sql_string = sql_query.to_sql();
+            debug!("Executing search SQL: {}", sql_string);
+            debug!(
+                "With parameters: {:?}",
+                format_named_params_for_debug(&named_params_vec)
+            );
+        }
+
+        let mut stmt = self.conn.prepare(&sql_query.to_sql())?;
 
         match stmt.query_map(&*named_params_vec, |row| {
             Ok(History::builder()
@@ -369,7 +386,15 @@ impl Database for Sqlite {
                 rows.collect::<Result<Vec<History>, rusqlite::Error>>()
                     .map_err(DatabaseError::from)
             }
-            Err(e) => Err(e.into()),
+            Err(e) => {
+                debug!(
+                    "Search query failed: Query='{}', Params={:?}, Error={}",
+                    sql_query.to_sql(),
+                    format_named_params_for_debug(&named_params_vec),
+                    e
+                );
+                Err(e.into())
+            }
         }
     }
 
@@ -502,7 +527,6 @@ fn get_connection(path: &str) -> Connection {
 ///
 /// * `conn`: Connection to the Raven database.
 /// * `current_version`: The current schema version reported by the database.
-#[allow(clippy::single_match_else)]
 fn run_migrations(
     conn: &mut Connection,
     current_version: u32,
@@ -527,6 +551,7 @@ fn run_migrations(
         let migration_sql = match version_to_migrate_from {
             0 => MIGRATION_V0_TO_V1,
             1 => MIGRATION_V1_TO_V2,
+            2 => MIGRATION_V2_TO_V3,
             _ => {
                 let err_msg = format!("Migration script for {migration_name} not found.");
                 error!("{err_msg}");
@@ -582,6 +607,45 @@ fn run_migrations(
     Ok(())
 }
 
+/// Formats a vector of named parameters (`(&str, &dyn ToSql)`) into a vector of strings
+/// suitable for debugging purposes.
+///
+/// Each element in the output vector represents a single named parameter in the format "key=value".
+/// The value part is derived using the `ToSql` trait implementation of the parameter.
+/// If conversion to SQL fails, an error message is included in the string.
+/// Special handling is included for `ToSqlOutput::Borrowed` to attempt string representation,
+/// falling back to "error" if the conversion isn't straightforward (e.g., for non-text types).
+///
+/// # Arguments
+///
+/// * `named_params_vec` - A reference to a vector of tuples, where each tuple contains
+///   a string slice representing the parameter name and a reference to a type implementing `ToSql`.
+///
+/// # Returns
+///
+/// A `Vec<String>` where each string represents a formatted named parameter for debugging.
+fn format_named_params_for_debug(named_params_vec: &Vec<(&str, &dyn ToSql)>) -> Vec<String> {
+    named_params_vec
+        .iter()
+        .map(|(k, v)| {
+            match v.to_sql() {
+                // ValueRef implements Debug
+                Ok(ToSqlOutput::Owned(value)) => format!("{k}={value:?}"),
+                Ok(ToSqlOutput::Borrowed(value_ref)) => {
+                    // Note: value_ref.as_str() only works well for Text types.
+                    // It might return "error" inappropriately for non-text types (Integer, Real, Blob, Null).
+                    // Consider using a match on value_ref if more precise formatting is needed.
+                    format!("{k}={:?}", value_ref.as_str().unwrap_or("error"))
+                }
+                Err(e) => format!("{k}={{Error converting to SQL: {e:?}}}"),
+                // Use a wildcard for any unexpected or future variants if you want to avoid compilation errors
+                // on library updates, but this might hide issues.
+                _ => format!("{k}={{Unhandled ToSqlOutput variant}}"),
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -633,6 +697,42 @@ mod tests {
         let initial_version = get_user_version(&db.conn).expect("Get version failed");
         assert_eq!(initial_version, SchemaVersion::V1.to_u32());
 
+        let get_history_old_exists = |conn: &Connection| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM sqlite_master where type = 'table' AND name = 'history_old'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .is_ok_and(|count| count == 1)
+        };
+
+        assert!(
+            !get_history_old_exists(&db.conn),
+            "history_old should not exist"
+        );
+
+        let result = run_migrations(&mut db.conn, initial_version, Some(SchemaVersion::V2));
+
+        // 3. Assert: Check result, version update, and schema change.
+        assert!(result.is_ok(), "Migration failed: {:?}", result.err());
+        assert_eq!(
+            get_user_version(&db.conn).expect("Get version failed"),
+            SchemaVersion::V2.to_u32(),
+            "Database version should be updated to V2"
+        );
+        assert!(
+            !get_history_old_exists(&db.conn),
+            "history_old should not exist"
+        );
+    }
+
+    #[test]
+    fn test_run_migrations_v2_to_v3_success() {
+        // 1. Setup: Create DB, which initializes to V1 schema and version 1.
+        let mut db = memory_db(Some(SchemaVersion::V2));
+        let initial_version = get_user_version(&db.conn).expect("Get version failed");
+        assert_eq!(initial_version, SchemaVersion::V2.to_u32());
+
         // Checks if the `history_fts` virtual table exists in the ``SQLite`` database.
         let get_history_fts_exists = |conn: &Connection| {
             conn.query_row(
@@ -657,32 +757,32 @@ mod tests {
         // Verify the history_fts table and associated triggers don't exist before migration.
         assert!(
             !get_history_fts_exists(&db.conn),
-            "history_fts should not exist in V1 schema"
+            "history_fts should not exist in V2 schema"
         );
         assert!(
             !get_history_triggers_exist(&db.conn),
-            "history_triggers should not exist in V1 schema"
+            "history_triggers should not exist in V2 schema"
         );
 
         // 2. Act: Run migrations starting from the initial version.
-        let result = run_migrations(&mut db.conn, initial_version, Some(SchemaVersion::V2));
+        let result = run_migrations(&mut db.conn, initial_version, Some(SchemaVersion::V3));
 
         // 3. Assert: Check result, version update, and schema change.
         assert!(result.is_ok(), "Migration failed: {:?}", result.err());
         assert_eq!(
             get_user_version(&db.conn).expect("Get version failed"),
-            SchemaVersion::V2.to_u32(),
-            "Database version should be updated to V2"
+            SchemaVersion::V3.to_u32(),
+            "Database version should be updated to V3"
         );
 
         // Verify the schema change occurred.
         assert!(
             get_history_fts_exists(&db.conn),
-            "history_fts should exist in Schema v2."
+            "history_fts should exist in Schema V3."
         );
         assert!(
             get_history_triggers_exist(&db.conn),
-            "history_triggers should exist in V2 schema"
+            "history_triggers should exist in V3 schema"
         );
     }
 
