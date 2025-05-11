@@ -8,7 +8,7 @@ _raven_preexec() {
 
 _zsh_autosuggest_strategy_raven() {
   typeset -g suggestion
-  suggestion=$(RAVEN_QUERY="$1" raven search --limit 1 --suggest)
+  suggestion=$(RAVEN_QUERY="$1" raven search --limit 1 --mode prefix)
 }
 
 if [ -n "${ZSH_AUTOSUGGEST_STRATEGY:-}" ]; then

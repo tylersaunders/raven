@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### 🚀 Features
+
+- *(search)* [**breaking**] Introduce configurable FTS5 match modes
+
 ## [0.1.3] - 2025-05-05
 
 ### 🚀 Features

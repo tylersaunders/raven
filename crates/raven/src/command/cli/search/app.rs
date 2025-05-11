@@ -13,8 +13,8 @@ use ratatui::{
         WidgetRef,
     },
 };
-use raven_database::HistoryFilters;
 use raven_database::{Context, current_context, history::model::History};
+use raven_database::{HistoryFilters, MatchMode};
 use time::OffsetDateTime;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -46,6 +46,7 @@ pub struct AppState {
     pub scope: Scope,
     pub cwd: String,
     pub confirming_delete: bool,
+    pub mode: MatchMode,
 }
 
 impl SearchApp {
@@ -60,7 +61,7 @@ impl SearchApp {
                     Scope::All => None,
                 },
                 limit: Some(500),
-                suggest: false,
+                mode: state.mode,
             },
         ) {
             Ok(h) => h,
@@ -432,6 +433,7 @@ mod tests {
             scope: Scope::All,
             cwd: String::from("/test/dir"),
             confirming_delete: false, // Initialize here
+            mode: MatchMode::default(),
         }
     }
     // --- Mock Database for Testing ---
@@ -814,6 +816,7 @@ mod tests {
             scope: Scope::Cwd,
             cwd: String::new(),
             confirming_delete: false, // Initialize here
+            mode: MatchMode::default(),
         };
         app.get_history(&app_state);
         println!("{:?}", app.commands);

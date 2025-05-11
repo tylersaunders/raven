@@ -1,3 +1,4 @@
+use clap::ValueEnum;
 use database::{Database, sqlite::Sqlite};
 use raven_common::{
     config::{Config, load_config},
@@ -18,13 +19,28 @@ pub struct Context {
     pub config: Config,
 }
 
+/// Specifies the matching mode for queries.
+#[derive(Clone, Debug, Copy, ValueEnum)]
+pub enum MatchMode {
+    /// Query is an initial prefix.
+    Prefix,
+    /// Uses a fuzzy matching algorithm to find terms.
+    Fuzzy,
+}
+
+impl Default for MatchMode {
+    fn default() -> Self {
+        Self::Fuzzy
+    }
+}
+
 /// Optional filters that can be used for searching for History objects.
 #[derive(Default, Clone, Debug)]
 pub struct HistoryFilters {
     pub exit: Option<i64>,
     pub cwd: Option<String>,
     pub limit: Option<usize>,
-    pub suggest: bool,
+    pub mode: MatchMode,
 }
 
 #[must_use]

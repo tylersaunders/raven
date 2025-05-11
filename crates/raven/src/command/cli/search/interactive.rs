@@ -5,6 +5,7 @@ use ratatui::layout::Position;
 use ratatui::widgets::ListState;
 use ratatui::{Terminal, prelude::CrosstermBackend};
 use raven_common::utils;
+use raven_database::MatchMode;
 use raven_database::history::model::History;
 
 use super::app::{AppState, Scope, SearchApp};
@@ -12,7 +13,7 @@ use super::event::{Event, EventHandler};
 use super::tui::Tui;
 
 #[allow(clippy::unnecessary_wraps)]
-pub fn history(query: &[String]) -> Option<History> {
+pub fn history(query: &[String], mode: MatchMode) -> Option<History> {
     let mut app = SearchApp::new(query.join(" "));
 
     // Establish initial cursor state, this will get updated each draw.
@@ -22,6 +23,7 @@ pub fn history(query: &[String]) -> Option<History> {
         scope: Scope::Cwd,
         cwd: utils::get_current_dir(),
         confirming_delete: false,
+        mode,
     };
 
     // Fetch initial list

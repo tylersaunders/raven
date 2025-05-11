@@ -1,6 +1,7 @@
 use std::fs;
 
 mod query;
+use crate::MatchMode;
 use log::{debug, error};
 use query::{Query, SqlString};
 use raven_common::{
@@ -84,6 +85,39 @@ impl Sqlite {
                 .expect("Could not generate database file path."),
         );
         Self { conn }
+    }
+}
+
+/// Generates an FTS5 match parameter string based on the query and mode.
+///
+/// Args:
+///   query: The user-provided search string.
+///   mode: The desired FTS5 matching mode (`Fuzzy` or `Prefix`).
+///
+/// Returns:
+///   A string suitable for use as the right-hand operand of an FTS5 `MATCH` operator.
+///   Returns an empty string if the input query is empty, signifying no FTS filtering.
+#[must_use]
+pub fn generate_fts5_match_parameter(query: &str, mode: MatchMode) -> String {
+    if query.is_empty() {
+        return String::new();
+    }
+
+    match mode {
+        MatchMode::Fuzzy => {
+            let words: Vec<String> = query
+                .split_whitespace()
+                .map(|word| {
+                    let escaped_word = word.replace('"', "\"\"");
+                    format!("\"{escaped_word}\"*")
+                })
+                .collect();
+            words.join(" ")
+        }
+        MatchMode::Prefix => {
+            let escaped_query = query.replace('"', "\"\"");
+            format!("^\"{escaped_query}\"*")
+        }
     }
 }
 
@@ -321,19 +355,11 @@ impl Database for Sqlite {
             sql_query.from.clear();
             sql_query
                 .from("history_fts fts JOIN history h ON h.id = fts.rowid")
-                .match_fts("fts.command")
-                .orderby("rank", "ASC");
+                .match_fts("fts.command");
 
-            // Split by whitespace breaks, and tokenize each individual word.
-            let words: Vec<&str> = query.split_whitespace().collect();
-
-            let tokens: Vec<String> = words
-                .into_iter()
-                .map(|word| format!("\"{word}\"*"))
-                .collect();
-
+            let fts5_query = generate_fts5_match_parameter(query, filters.mode);
             // Add the search tokens to the query parameters.
-            params_map.insert(":fts_command".to_string(), Box::new(tokens.join(" ")));
+            params_map.insert(":fts_command".to_string(), Box::new(fts5_query));
         }
 
         if let Some(exit) = filters.exit {
@@ -930,7 +956,6 @@ mod tests {
             .search(
                 "ca",
                 HistoryFilters {
-                    suggest: true,
                     ..Default::default()
                 },
             )
@@ -1030,5 +1055,47 @@ mod tests {
             .get_history_total()
             .expect("Failed to get total after delete");
         assert_eq!(total_after_delete, 2); // Back to 2 after deleting one
+    }
+
+    #[test]
+    fn test_generate_fts5_match_parameter_empty_query() {
+        assert_eq!(generate_fts5_match_parameter("", MatchMode::Fuzzy), "");
+        assert_eq!(generate_fts5_match_parameter("", MatchMode::Prefix), "");
+    }
+
+    #[test]
+    fn test_generate_fts5_match_parameter_fuzzy() {
+        assert_eq!(
+            generate_fts5_match_parameter("hello world", MatchMode::Fuzzy),
+            "\"hello\"* \"world\"*"
+        );
+        assert_eq!(
+            generate_fts5_match_parameter("term1", MatchMode::Fuzzy),
+            "\"term1\"*"
+        );
+        assert_eq!(
+            generate_fts5_match_parameter("with\"quote", MatchMode::Fuzzy),
+            "\"with\"\"quote\"*"
+        );
+        assert_eq!(
+            generate_fts5_match_parameter("multiple words \"here\"", MatchMode::Fuzzy),
+            "\"multiple\"* \"words\"* \"\"\"here\"\"\"*"
+        );
+    }
+
+    #[test]
+    fn test_generate_fts5_match_parameter_initial_prefix() {
+        assert_eq!(
+            generate_fts5_match_parameter("start phrase", MatchMode::Prefix),
+            "^\"start phrase\"*"
+        );
+        assert_eq!(
+            generate_fts5_match_parameter("prefix", MatchMode::Prefix),
+            "^\"prefix\"*"
+        );
+        assert_eq!(
+            generate_fts5_match_parameter("prefix with\"quote", MatchMode::Prefix),
+            "^\"prefix with\"\"quote\"*"
+        );
     }
 }

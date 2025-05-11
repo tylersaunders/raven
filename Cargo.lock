@@ -612,6 +612,7 @@ dependencies = [
 name = "raven-database"
 version = "0.1.3"
 dependencies = [
+ "clap",
  "log",
  "raven-common",
  "rusqlite",

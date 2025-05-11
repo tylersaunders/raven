@@ -3,7 +3,8 @@ use std::io::Write;
 use clap::Parser;
 use log::{debug, error};
 use raven_database::{
-    Context, HistoryFilters, current_context, database::DatabaseError, history::model::History,
+    Context, HistoryFilters, MatchMode, current_context, database::DatabaseError,
+    history::model::History,
 };
 
 mod app;
@@ -37,9 +38,9 @@ pub struct Cmd {
     #[arg(long, short)]
     interactive: bool,
 
-    /// [QUERY] is used as a prefix to generate a suggestion.
-    #[arg(long, short)]
-    suggest: bool,
+    /// Search matching mode
+    #[arg(long, short, value_enum)]
+    mode: Option<MatchMode>,
 }
 
 impl Cmd {
@@ -61,7 +62,7 @@ impl Cmd {
         );
 
         if self.interactive {
-            let Some(h) = interactive::history(&query) else {
+            let Some(h) = interactive::history(&query, self.mode.unwrap_or_default()) else {
                 std::process::exit(1);
             };
             write_command_out(&h.command);
@@ -70,7 +71,7 @@ impl Cmd {
                 exit: self.exit,
                 cwd: self.cwd,
                 limit: self.limit,
-                suggest: self.suggest,
+                mode: self.mode.unwrap_or_default(),
             };
             debug!("search with filters {filters:?}");
             let Ok(entries) = run_non_interactive(&query, filters) else {

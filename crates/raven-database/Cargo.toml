@@ -12,6 +12,7 @@ license = { workspace = true }
 
 raven-common = {path = "../raven-common"}
 
+clap = { workspace = true }
 log = { workspace = true }
 # Use bundled to compile and link an up-to-date version of
 # sqlite into the library. Avoids issues with the version
