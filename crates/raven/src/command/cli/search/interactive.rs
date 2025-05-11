@@ -58,6 +58,13 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut SearchApp, state: &mut A
         }
         (KeyModifiers::NONE, KeyCode::Left) => app.move_cursor_left(),
         (KeyModifiers::NONE, KeyCode::Right) => app.move_cursor_right(),
+        (KeyModifiers::ALT, KeyCode::Char('m')) => {
+            match state.mode {
+                MatchMode::Prefix => state.mode = MatchMode::Fuzzy,
+                MatchMode::Fuzzy => state.mode = MatchMode::Prefix,
+            }
+            app.get_history(state);
+        }
         (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(to_insert)) => {
             if state.confirming_delete {
                 match to_insert {

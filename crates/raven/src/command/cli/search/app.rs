@@ -167,15 +167,12 @@ impl SearchApp {
     }
 
     /// Confirms the deletion of the selected item.
-    /// TODO: Implement actual database deletion and error handling.
     pub fn confirm_delete(&mut self, state: &mut AppState) {
         if let Some(selected_index) = state.list_state.selected() {
             if selected_index < self.commands.len() {
                 let item_to_delete = &self.commands[selected_index];
                 let item_id = item_to_delete.id;
 
-                // --- Placeholder for actual DB call ---
-                // TODO: Add proper error handling and display to user in TUI
                 match self.context.db.delete(item_id) {
                     Ok(()) => {
                         // Remove from the UI list *only on successful DB delete*
@@ -314,21 +311,39 @@ impl SearchApp {
     /// Renders the cursor and input query.
     fn render_query_box(area: Rect, buf: &mut Buffer, input: &str, app_state: &AppState) {
         let [top, bottom] = Layout::vertical([Constraint::Length(2), Constraint::Fill(1)])
-            .horizontal_margin(9)
             .vertical_margin(1)
             .areas(area);
+
+        let [mode, query] =
+            Layout::horizontal([Constraint::Length(9), Constraint::Fill(1)]).areas(top);
 
         let scope = match app_state.scope {
             Scope::Cwd => app_state.cwd.as_str(),
             Scope::All => "(Everything)",
         };
 
-        Paragraph::new(scope)
-            .style(Style::new().light_cyan())
+        // Mode
+        Line::default()
+            .spans([Span::styled(
+                match app_state.mode {
+                    MatchMode::Prefix => format!("{:>6}", "[prefix]"),
+                    MatchMode::Fuzzy => format!("{:>6}", "[fuzzy]"),
+                },
+                Style::default().fg(Color::LightBlue),
+            )])
+            .render_ref(mode, buf);
+
+        // Query
+        Line::default()
+            .spans([Span::styled(input, Style::default().fg(Color::Yellow))])
+            .render_ref(query, buf);
+
+        Line::default()
+            .spans([Span::styled(
+                format!("{:9}{scope}", ""),
+                Style::default().fg(Color::LightCyan),
+            )])
             .render_ref(bottom, buf);
-        Paragraph::new(input)
-            .style(Style::default().yellow())
-            .render_ref(top, buf);
     }
 
     /// Renders the shortcuts or a confirmation prompt in the specified area.
@@ -371,7 +386,9 @@ impl SearchApp {
             ]);
             let delete_key = Line::default()
                 .spans([Span::default().content("<Alt + d>: Delete selected entry")]);
-            let shortcuts = List::new([tab, quick_pick, delete_key]);
+            let mode =
+                Line::default().spans([Span::default().content("<Alt + m>: Toggle search mode")]);
+            let shortcuts = List::new([tab, quick_pick, delete_key, mode]);
             WidgetRef::render_ref(&shortcuts, bottom, buf);
         }
     }
