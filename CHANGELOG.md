@@ -2,11 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.1.4] - 2025-05-11
 
 ### 🚀 Features
 
 - *(search)* [**breaking**] Introduce configurable FTS5 match modes
+- *(search)* Implement fuzzy and prefix search modes
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* Bump version to v0.1.4
 
 ## [0.1.3] - 2025-05-05
 

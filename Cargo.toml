@@ -3,7 +3,7 @@ members = ["crates/*"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Tyler Saunders <tyler@thesummit.dev>"]
 description = "raven - remembering your shell history."
 repository = "https://github.com/tylersaunders/raven"
