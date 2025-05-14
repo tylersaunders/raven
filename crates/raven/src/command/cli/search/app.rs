@@ -316,8 +316,13 @@ impl SearchApp {
 
         let [mode, query] =
             Layout::horizontal([Constraint::Length(9), Constraint::Fill(1)]).areas(top);
+        let [_, scope] = Layout::horizontal([
+            Constraint::Length(9), // Empty filler to align with the text input
+            Constraint::Fill(1),
+        ])
+        .areas(bottom);
 
-        let scope = match app_state.scope {
+        let dir_scope = match app_state.scope {
             Scope::Cwd => app_state.cwd.as_str(),
             Scope::All => "(Everything)",
         };
@@ -340,10 +345,10 @@ impl SearchApp {
 
         Line::default()
             .spans([Span::styled(
-                format!("{:9}{scope}", ""),
+                dir_scope,
                 Style::default().fg(Color::LightCyan),
             )])
-            .render_ref(bottom, buf);
+            .render_ref(scope, buf);
     }
 
     /// Renders the shortcuts or a confirmation prompt in the specified area.

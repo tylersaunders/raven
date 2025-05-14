@@ -43,7 +43,7 @@ impl Cmd {
             // Print the ID to stdout, it will be used for history end {id}
             Ok(id) => println!("{id}"),
             Err(err) => panic!("{err}"),
-        };
+        }
     }
 
     /// Hook for after the command is finished running.
