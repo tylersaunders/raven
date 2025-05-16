@@ -20,3 +20,6 @@ log = { workspace = true }
 rusqlite = { version = "0.33.0", features = ["bundled"] }
 time = { workspace = true}
 typed-builder = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
