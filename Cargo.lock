@@ -614,7 +614,7 @@ dependencies = [
 
 [[package]]
 name = "raven"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "clap",
  "crossterm",
@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "raven-common"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "log",
  "serde",
@@ -640,7 +640,7 @@ dependencies = [
 
 [[package]]
 name = "raven-database"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "clap",
  "log",

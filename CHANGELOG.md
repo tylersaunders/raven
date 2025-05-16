@@ -2,12 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.1.5] - 2025-05-16
 
 ### 🚜 Refactor
 
 - Minor cleanups
 - *(import)* Improve history parsing and handle multi-line commands
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* Bump version to v0.1.5
 
 ## [0.1.4] - 2025-05-11
 
